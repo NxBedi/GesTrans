@@ -1,0 +1,61 @@
+
+> customs-accounting-backend@1.0.0 dev
+> node --watch src/index.js
+
+Database migrations checked.
+Customs accounting API listening on http://localhost:4000
+Restarting 'src/index.js'
+Database migrations checked.
+Customs accounting API listening on http://localhost:4000
+Restarting 'src/index.js'
+Database migrations checked.
+Customs accounting API listening on http://localhost:4000
+Restarting 'src/index.js'
+Database migrations checked.
+Customs accounting API listening on http://localhost:4000
+Restarting 'src/index.js'
+Database migrations checked.
+Customs accounting API listening on http://localhost:4000
+Restarting 'src/index.js'
+Database migrations checked.
+Customs accounting API listening on http://localhost:4000
+[unhandledRejection] error: invalid input syntax for type integer: "NaN"
+    at C:\Users\LMR\Downloads\BLtoXML\customs-accounting\backend\node_modules\pg-pool\index.js:45:11
+    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+    at async file:///C:/Users/LMR/Downloads/BLtoXML/customs-accounting/backend/src/routes/invoices.js:145:24 {
+  length: 146,
+  severity: 'ERROR',
+  code: '22P02',
+  detail: undefined,
+  hint: undefined,
+  position: undefined,
+  internalPosition: undefined,
+  internalQuery: undefined,
+  where: "unnamed portal parameter $1 = '...'",
+  schema: undefined,
+  table: undefined,
+  column: undefined,
+  dataType: undefined,
+  constraint: undefined,
+  file: 'numutils.c',
+  line: '617',
+  routine: 'pg_strtoint32_safe'
+}
+Restarting 'src/index.js'
+Database migrations checked.
+Customs accounting API listening on http://localhost:4000
+Restarting 'src/index.js'
+Database migrations checked.
+Customs accounting API listening on http://localhost:4000
+Restarting 'src/index.js'
+Database migrations checked.
+Customs accounting API listening on http://localhost:4000
+Restarting 'src/index.js'
+Database migrations checked.
+Customs accounting API listening on http://localhost:4000
+Restarting 'src/index.js'
+Database migrations checked.
+Customs accounting API listening on http://localhost:4000
+Restarting 'src/index.js'
+Database migrations checked.
+Customs accounting API listening on http://localhost:4000
