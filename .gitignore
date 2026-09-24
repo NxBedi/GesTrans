@@ -1,2 +1,11 @@
-**node_modules**
+**node_modules
 frontend/dist
+
+# Environment / secrets (never commit real .env)
+backend/.env
+.env
+
+# Runtime logs
+backend/backend.log
+frontend/frontend.log
+*.log
