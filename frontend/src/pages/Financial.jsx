@@ -210,7 +210,7 @@ export default function Financial() {
 
       {showOldDebtForm && (
         <form className="card" onSubmit={saveOldDebt} style={{ marginBottom: 20 }}>
-          <h3 style={{ marginBottom: 16 }}>تسجيل دين قديم <span className="muted" style={{ fontWeight: 400 }}>(مستحقات من النظام السابق — تُحسب في رأس المال عند تحصيلها نقداً)</span></h3>
+          <h3 style={{ marginBottom: 16 }}>تسجيل دين قديم <span className="muted" style={{ fontWeight: 400 }}>(مستحقات من النظام السابق — تُضاف لنقدية الصندوق عند تحصيلها نقداً)</span></h3>
           <div className="grid grid-2">
             <div className="form-row">
               <label className="form-label">الوصف / المصدر *</label>
@@ -291,7 +291,7 @@ export default function Financial() {
       {/* Old debts management */}
       <div className="card" style={{ padding: 0, overflow: 'hidden', marginBottom: 16 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px 20px 0', flexWrap: 'wrap', gap: 8 }}>
-          <h3>📒 الديون القديمة <span className="muted" style={{ fontWeight: 400, fontSize: 13 }}>(مستحقات سابقة — تُضاف لرأس المال عند تحصيلها نقداً)</span></h3>
+          <h3>📒 الديون القديمة <span className="muted" style={{ fontWeight: 400, fontSize: 13 }}>(مستحقات سابقة — تُضاف لنقدية الصندوق عند تحصيلها)</span></h3>
           <span className="muted">المتبقي: <b style={{ color: '#f59e0b' }}>{fmt(overview?.old_debts)}</b></span>
         </div>
         <div style={{ padding: 12 }}>

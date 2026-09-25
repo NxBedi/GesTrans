@@ -110,7 +110,8 @@ router.get('/movements', allowRoles('manager'), async (req, res) => {
         FROM cashbox_adjustments a
       UNION ALL
       SELECT to_char(c.txn_date, 'YYYY-MM-DD'), c.amount, 'capital'::text AS kind,
-             CASE WHEN c.amount > 0 THEN 'إيداع رأس مال' ELSE 'سحب رأس مال' END AS descr, c.notes AS ref
+             CASE WHEN c.amount > 0 THEN 'إيداع رأس مال' ELSE 'سحب رأس مال' END AS descr,
+             COALESCE(c.source, 'أموال المالك') AS ref
         FROM capital_transactions c
       UNION ALL
       SELECT to_char(p.payment_date, 'YYYY-MM-DD'), p.amount, 'collection' AS kind,

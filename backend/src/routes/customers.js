@@ -65,7 +65,7 @@ router.put('/:id', allowRoles('manager'), async (req, res) => {
 // PUT /api/customers/:id/opening-balance - manager: set carried-over previous debt.
 // This is a one-shot seed: the amount is migrated into old_debts on the next server boot,
 // so it NEVER touches the cashbox and cannot be edited again afterwards.
-// Collected old debts enter the cashbox (رأس المال = النقد فقط).
+// Collected old debts enter the cashbox (الدين القديم المحصَّل يرفع نقدية الصندوق فقط).
 router.put('/:id/opening-balance', allowRoles('manager'), async (req, res) => {
   const id = Number(req.params.id);
   const { opening_balance } = req.body || {};
