@@ -87,7 +87,7 @@ export default function Liquidations() {
           <thead>
             <tr>
               <th>رقم LIQUIDATION</th>
-              <th>البلاندي</th>
+              <th>BL</th>
               <th>رقم الحاوية</th>
               <th>الزبون</th>
               <th>المبلغ</th>
