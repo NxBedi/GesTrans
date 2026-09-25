@@ -129,14 +129,18 @@ CREATE INDEX IF NOT EXISTS idx_general_expenses_date ON general_expenses(expense
 CREATE INDEX IF NOT EXISTS idx_general_expenses_category ON general_expenses(category);
 
 -- ---------- capital transactions (رأس المال: إيداعات وسحوبات المالك) ----------
+-- source: منبع المساهمة (مثال: شريك، قرض مالك، بيع عين…) — رأس المال غير محدود سلفاً؛
+-- تُتتبَّع المساهمات المتعددة حسب المصدر بلا إجمالٍ ثابت.
 CREATE TABLE IF NOT EXISTS capital_transactions (
   id          SERIAL PRIMARY KEY,
   amount      NUMERIC(14,2) NOT NULL CHECK (amount <> 0),
   txn_date    DATE NOT NULL DEFAULT CURRENT_DATE,
+  source      VARCHAR(120) NOT NULL DEFAULT 'أموال المالك',
   notes       TEXT,
   entered_by  INT REFERENCES users(id),
   created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+ALTER TABLE capital_transactions ADD COLUMN IF NOT EXISTS source VARCHAR(120) NOT NULL DEFAULT 'أموال المالك';
 CREATE INDEX IF NOT EXISTS idx_capital_transactions_date ON capital_transactions(txn_date);
 
 -- ---------- cashbox adjustments (رصيد بداية الصندوق أو تسوية يدوية للنقدية) ----------

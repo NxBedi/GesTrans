@@ -7,17 +7,20 @@ router.use(authRequired);
 
 /**
  * النموذج المحاسبي:
- *   إجمالي رأس المال = النقدية الفعلية في الصندوق فقط (رأس المال = الصندوق).
- * النقدية في الصندوق = إيداعات رأس المال + تسويات يدوية + التحصيلات من الزبائن + تحصيل الديون القديمة
- *                    − تكاليف الحاويات المدفوعة − مصاريف المؤسسة.
+ *   رأس المال المستثمر = مجموع مساهمات المالك فقط (إيداعات − سحوبات) — غير محدود، متعدد المصادر.
+ *   النقدية في الصندوق = كل ما دخل فعلاً − كل ما خرج فعلاً (محاسبة حركة، لا رأس مال محدد سلفاً):
+ *                     إيداعات وسحوبات رأس المال + تسويات يدوية + التحصيلات من الزبائن + تحصيل الديون القديمة
+ *                     − تكاليف الحاويات المدفوعة − مصاريف المؤسسة − الرواتب المدفوعة.
+ *   النتيجة التشغيلية المحققة نقداً = نقدية الصندوق − رأس المال المستثمر.
+ * المصاريف والديون والأرباح تُتتبَّع كلٌّ منها مستقلة عن رأس المال.
  * الديون القديمة المضمونة: مستحقات مُرحَّلة من النظام السابق، منفصلة عن رأس المال؛
- *   عند تحصيلها تدخل نقداً إلى الصندوق فترفع رأس المال، دون أن تتضاعف (لا تُحتسب مرتين).
+ *   عند تحصيلها تدخل نقداً إلى الصندوق فترفع النقدية (لا تتضاعف، لا تُحتسب مرتين).
  */
 
 // GET /api/financial/overview - summary of capital, cash box, old debts, customer debts
 router.get('/overview', allowRoles('manager'), async (req, res) => {
-  const [cash, oldDebts, billed, paid, collected, costs, general, adjustments, pricingProfit, salary] = await Promise.all([
-    // النقدية الفعلية في الصندوق
+  const [cash, capital, oldDebts, billed, paid, collected, costs, general, adjustments, pricingProfit, salary] = await Promise.all([
+    // النقدية الفعلية في الصندوق (محصلة كل الحركات)
     query(`
       SELECT (COALESCE((SELECT SUM(amount) FROM capital_transactions),0)
             + COALESCE((SELECT SUM(amount) FROM cashbox_adjustments),0)
@@ -27,6 +30,8 @@ router.get('/overview', allowRoles('manager'), async (req, res) => {
             - COALESCE((SELECT SUM(amount) FROM general_expenses),0)
             + COALESCE((SELECT SUM(amount) FROM salary_transactions WHERE amount < 0),0))::numeric AS total
     `),
+    // رأس المال المستثمر = مساهمات المالك فقط (مستقل عن نشاط الصندوق)
+    query('SELECT COALESCE(SUM(amount),0)::numeric AS total FROM capital_transactions'),
     // الديون القديمة المتبقية (غير المحصّلة)
     query(`
       SELECT (COALESCE((SELECT SUM(amount) FROM old_debts),0)
@@ -51,8 +56,8 @@ router.get('/overview', allowRoles('manager'), async (req, res) => {
   ]);
 
   const cashTotal = Number(cash.rows[0].total);
+  const capitalInvested = Number(capital.rows[0].total);
   const oldDebtTotal = Number(oldDebts.rows[0].total);
-  const capitalTotal = cashTotal;
   const billedTotal = Number(billed.rows[0].total);
   const paidTotal = Number(paid.rows[0].total);
   const collectedTotal = Number(collected.rows[0].total);
@@ -62,11 +67,20 @@ router.get('/overview', allowRoles('manager'), async (req, res) => {
   // صافي مستحقات الزبائن: موجب = يدين لنا، سالب = سلف من الزبائن
   const customerDebt = billedTotal - paidTotal;
 
+  // النتيجة التشغيلية محققة نقداً = نقدية الصندوق − رأس المال المستثمر
+  const operationalResult = cashTotal - capitalInvested;
+
   res.json({
-    capital: capitalTotal,
+    // رأس المال المستثمر = مساهمات المالك فقط (مستقل عن نشاط الصندوق)
+    capital_invested: capitalInvested,
+    // النقدية الفعلية في الصندوق (محصلة كل الحركات)
+    cash_box: cashTotal,
+    // النتيجة التشغيلية المحققة نقداً (أرباح/خسائر تشغيلية + فروقات توقيت التحصيل)
+    operational_cash_result: operationalResult,
+    // حقول متوافقة للخلف (مؤقتة)
+    capital: capitalInvested,
     cash_capital: cashTotal,
     old_debts: oldDebtTotal,
-    cash_box: cashTotal,
     customer_debt: customerDebt,
     total_collections: collectedTotal,
     total_container_costs: costsTotal,
@@ -132,7 +146,7 @@ router.get('/movements', allowRoles('manager'), async (req, res) => {
   res.json(rows.map((r) => ({ ...r, amount: Number(r.amount) })));
 });
 
-// GET /api/financial/capital - list of capital transactions
+// GET /api/financial/capital - list of capital transactions (deposits/withdrawals per source)
 router.get('/capital/list', allowRoles('manager'), async (req, res) => {
   const { from, to } = req.query;
   const conds = [];
@@ -142,24 +156,24 @@ router.get('/capital/list', allowRoles('manager'), async (req, res) => {
   if (to && to !== 'undefined') conds.push(`txn_date <= ${push(to)}::date`);
   const where = conds.length ? `WHERE ${conds.join(' AND ')}` : '';
   const { rows } = await query(`
-    SELECT to_char(c.txn_date, 'YYYY-MM-DD') AS txn_date, c.amount, c.notes, c.id, u.full_name AS entered_by_name
+    SELECT to_char(c.txn_date, 'YYYY-MM-DD') AS txn_date, c.amount, c.source, c.notes, c.id, u.full_name AS entered_by_name
     FROM capital_transactions c LEFT JOIN users u ON u.id = c.entered_by
     ${where} ORDER BY txn_date DESC, c.id DESC`, params);
   res.json(rows.map((r) => ({ ...r, amount: Number(r.amount) })));
 });
 
-// POST /api/financial/capital - deposit (+) enters the cash box / withdrawal (-) leaves the cash box
+// POST /api/financial/capital - record an owner contribution (+) / withdrawal (-), with its source
 router.post('/capital', allowRoles('manager'), async (req, res) => {
-  const { amount, txn_date, notes } = req.body || {};
+  const { amount, txn_date, source, notes } = req.body || {};
   const amt = Number(amount);
   if (amount === undefined || amount === '' || !isFinite(amt) || amt === 0) {
     return res.status(400).json({ error: 'المبلغ مطلوب ويجب ألا يكون صفراً' });
   }
   if (!txn_date) return res.status(400).json({ error: 'التاريخ مطلوب' });
   const { rows } = await query(
-    `INSERT INTO capital_transactions (amount, txn_date, notes, entered_by)
-     VALUES ($1, $2, $3, $4) RETURNING *`,
-    [amt, txn_date, notes || null, req.user.id]
+    `INSERT INTO capital_transactions (amount, txn_date, source, notes, entered_by)
+     VALUES ($1, $2, $3, $4, $5) RETURNING *`,
+    [amt, txn_date, (source && String(source).trim()) || 'أموال المالك', notes || null, req.user.id]
   );
   res.status(201).json({ ...rows[0], amount: Number(rows[0].amount) });
 });
