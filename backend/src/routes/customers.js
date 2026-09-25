@@ -6,7 +6,7 @@ const router = Router();
 router.use(authRequired);
 
 function serialize(row) {
-  return { id: row.id, name: row.name, phone: row.phone, email: row.email, address: row.address, notes: row.notes, is_active: row.is_active, opening_balance: Number(row.opening_balance || 0), created_at: row.created_at };
+  return { id: row.id, name: row.name, phone: row.phone, email: row.email, address: row.address, notes: row.notes, is_active: row.is_active, opening_balance: Number(row.opening_balance || 0), due_date: row.due_date || null, created_at: row.created_at };
 }
 
 // GET /api/customers - everyone can read (employees need the list to register containers)
@@ -39,25 +39,32 @@ async function parseActive(is_active, current) {
 // PUT /api/customers/:id (manager only)
 router.put('/:id', allowRoles('manager'), async (req, res) => {
   const id = Number(req.params.id);
-  const { name, phone, email, address, notes, is_active, opening_balance } = req.body || {};
+  const { name, phone, email, address, notes, is_active, opening_balance, due_date } = req.body || {};
   if (name !== undefined && !String(name).trim()) {
     return res.status(400).json({ error: 'اسم الزبون مطلوب' });
   }
-  const cur = await query('SELECT is_active, opening_balance_migrated FROM customers WHERE id = $1', [id]);
+  const cur = await query('SELECT * FROM customers WHERE id = $1', [id]);
   if (!cur.rows.length) return res.status(404).json({ error: 'الزبون غير موجود' });
   const ob = Number(opening_balance);
   if (opening_balance !== undefined && opening_balance !== '' && !isFinite(ob)) {
     return res.status(400).json({ error: 'الدين السابق يجب أن يكون رقماً' });
   }
-  if (ob !== 0 && cur.rows[0].opening_balance_migrated) {
+  if (isFinite(ob) && ob !== 0 && cur.rows[0].opening_balance_migrated) {
     return res.status(400).json({ error: 'رصيد هذا الزبون السابق رُحّل بالفعل إلى الديون القديمة؛ سجّل ديناً جديداً من صفحة الحسابات' });
   }
+  const nextName = name !== undefined ? String(name).trim() : cur.rows[0].name;
+  const nextPhone = phone !== undefined ? (phone || null) : cur.rows[0].phone;
+  const nextEmail = email !== undefined ? (email || null) : cur.rows[0].email;
+  const nextAddress = address !== undefined ? (address || null) : cur.rows[0].address;
+  const nextNotes = notes !== undefined ? (notes || null) : cur.rows[0].notes;
+  const nextDueDate = due_date !== undefined && due_date !== '' ? String(due_date).trim() : null;
+  const nextOb = isFinite(ob) ? (Number(ob) || 0) : cur.rows[0].opening_balance;
   const { rows } = await query(
     `UPDATE customers SET name = $1, phone = $2, email = $3, address = $4, notes = $5,
-       is_active = $6, opening_balance = $7, updated_at = now()
-     WHERE id = $8 RETURNING *`,
-    [String(name || '').trim(), phone || null, email || null, address || null, notes || null,
-     await parseActive(is_active, cur.rows[0].is_active), Number(ob) || 0, id]
+       is_active = $6, opening_balance = $7, due_date = $8, updated_at = now()
+     WHERE id = $9 RETURNING *`,
+    [nextName, nextPhone, nextEmail, nextAddress, nextNotes,
+     await parseActive(is_active, cur.rows[0].is_active), nextOb, nextDueDate, id]
   );
   res.json(serialize(rows[0]));
 });

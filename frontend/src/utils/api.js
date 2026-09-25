@@ -106,6 +106,10 @@ export const financialApi = {
   addOldDebt: (data) => api('/financial/old-debts', { method: 'POST', body: JSON.stringify(data) }),
   collectOldDebt: (id, data) => api(`/financial/old-debts/${id}/collect`, { method: 'POST', body: JSON.stringify(data) }),
   removeOldDebt: (id) => api(`/financial/old-debts/${id}`, { method: 'DELETE' }),
+  registerCurrent: () => api('/financial/register/current'),
+  registerOpen: (data) => api('/financial/register/open', { method: 'POST', body: JSON.stringify(data) }),
+  registerClose: (data) => api('/financial/register/close', { method: 'POST', body: JSON.stringify(data) }),
+  registerHistory: () => api('/financial/register/history'),
 };
 
 export const salaryApi = {
@@ -126,6 +130,8 @@ export const reportsApi = {
   expenses: (params = {}) => api('/reports/expenses' + buildQs(params)),
   expensesSummary: (params = {}) => api('/reports/expenses-summary' + buildQs(params)),
   invoiceTypesSummary: (params = {}) => api('/reports/invoice-types-summary' + buildQs(params)),
+  dashboard: () => api('/reports/dashboard'),
+  payments: (params = {}) => api('/reports/payments' + buildQs(params)),
 };
 
 function buildQs(params = {}) {

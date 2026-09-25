@@ -43,7 +43,11 @@ function FreeStorageBadge({ row }) {
   if (left === 0) {
     return <span className="franchise-expired">Expiré aujourd'hui</span>;
   }
-  return <span className="franchise-expired">Expiré (−{Math.abs(left)}j)</span>;
+  return (
+    <span className="franchise-expired" title="أيام التخزين المحسوبة بعد انتهاء المهلة">
+      Expiré (+{Math.abs(left)}j)
+    </span>
+  );
 }
 
 export default function ListeBL() {
@@ -527,6 +531,7 @@ export default function ListeBL() {
           </div>
         </div>
       )}
-    </div>
+
+      </div>
   );
 }

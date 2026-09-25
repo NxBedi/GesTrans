@@ -17,6 +17,98 @@ router.use(authRequired);
  *   عند تحصيلها تدخل نقداً إلى الصندوق فترفع النقدية (لا تتضاعف، لا تُحتسب مرتين).
  */
 
+// GET /api/financial/register/current - open cash register session (with live expected closing)
+router.get('/register/current', allowRoles('manager'), async (req, res) => {
+  const { rows } = await query(`
+    SELECT s.*, (s.opened_at::date)::text AS opened_day, u.full_name AS opened_by_name
+    FROM cash_register_sessions s LEFT JOIN users u ON u.id = s.opened_by
+    WHERE s.status = 'open' ORDER BY s.opened_at DESC LIMIT 1
+  `);
+  const session = rows[0] || null;
+  if (!session) return res.json(null);
+  // الرصيد المتوقع حالياً = الرصيد الافتتاحي + صافي الحركات منذ يوم الفتح حتى اليوم
+  const openedDate = session.opened_day || new Date().toISOString().slice(0, 10);
+  const flows = await query(`
+    SELECT
+      (COALESCE((SELECT SUM(pay.amount) FROM payments pay WHERE pay.payment_date >= $1::date),0)
+       + COALESCE((SELECT SUM(od.amount) FROM old_debt_collections od WHERE od.collection_date >= $1::date),0)
+       + COALESCE((SELECT SUM(cap.amount) FROM capital_transactions cap WHERE cap.txn_date >= $1::date),0)
+       + COALESCE((SELECT SUM(adj.amount) FROM cashbox_adjustments adj WHERE adj.adj_date >= $1::date),0)
+       - COALESCE((SELECT SUM(i.amount) FROM invoices i WHERE i.entry_date >= $1::date),0)
+       - COALESCE((SELECT SUM(g.amount) FROM general_expenses g WHERE g.expense_date >= $1::date),0)
+       - COALESCE((SELECT SUM(-s.amount) FROM salary_transactions s WHERE s.txn_date >= $1::date),0))::numeric AS net
+  `, [openedDate]);
+  const expected = Number(session.opening_balance) + Number(flows.rows[0].net);
+  res.json({ ...session, opening_balance: Number(session.opening_balance), expected_closing: expected, current_net: Number(flows.rows[0].net) });
+});
+
+// POST /api/financial/register/open - open the cash register for the day
+router.post('/register/open', allowRoles('manager'), async (req, res) => {
+  const { opening_balance, notes } = req.body || {};
+  const ob = Number(opening_balance);
+  if (opening_balance === undefined || opening_balance === '' || !isFinite(ob)) {
+    return res.status(400).json({ error: 'أدخل رصيداً افتتاحياً صحيحاً' });
+  }
+  const open = await query(`SELECT id FROM cash_register_sessions WHERE status = 'open' LIMIT 1`);
+  if (open.rows.length) return res.status(400).json({ error: 'الصندوق مفتوح بالفعل — أغلقه أولاً' });
+  const { rows } = await query(
+    `INSERT INTO cash_register_sessions (opening_balance, notes, opened_by)
+     VALUES ($1, $2, $3) RETURNING *`,
+    [ob, notes || null, req.user.id]
+  );
+  res.status(201).json({ ...rows[0], opening_balance: Number(rows[0].opening_balance) });
+});
+
+// POST /api/financial/register/close - close the register, reconcile expected vs actual
+router.post('/register/close', allowRoles('manager'), async (req, res) => {
+  const { actual_closing, notes } = req.body || {};
+  const ac = Number(actual_closing);
+  if (actual_closing === undefined || actual_closing === '' || !isFinite(ac)) {
+    return res.status(400).json({ error: 'أدخل الرصيد الفعلي المُدقّق بعد العدد' });
+  }
+  const open = await query(`SELECT *, (opened_at::date)::text AS opened_day FROM cash_register_sessions WHERE status = 'open' ORDER BY opened_at DESC LIMIT 1`);
+  if (!open.rows.length) return res.status(400).json({ error: 'الصندوق ليس مفتوحاً' });
+  const session = open.rows[0];
+  const openedDate = session.opened_day || new Date().toISOString().slice(0, 10);
+  const flows = await query(`
+    SELECT
+      (COALESCE((SELECT SUM(pay.amount) FROM payments pay WHERE pay.payment_date >= $1::date),0)
+       + COALESCE((SELECT SUM(od.amount) FROM old_debt_collections od WHERE od.collection_date >= $1::date),0)
+       + COALESCE((SELECT SUM(cap.amount) FROM capital_transactions cap WHERE cap.txn_date >= $1::date),0)
+       + COALESCE((SELECT SUM(adj.amount) FROM cashbox_adjustments adj WHERE adj.adj_date >= $1::date),0)
+       - COALESCE((SELECT SUM(i.amount) FROM invoices i WHERE i.entry_date >= $1::date),0)
+       - COALESCE((SELECT SUM(g.amount) FROM general_expenses g WHERE g.expense_date >= $1::date),0)
+       - COALESCE((SELECT SUM(-s.amount) FROM salary_transactions s WHERE s.txn_date >= $1::date),0))::numeric AS net
+  `, [openedDate]);
+  const expected = Number(session.opening_balance) + Number(flows.rows[0].net);
+  const difference = ac - expected;
+  const { rows } = await query(
+    `UPDATE cash_register_sessions
+     SET status = 'closed', closed_at = now(), expected_closing = $1, actual_closing = $2, difference = $3, notes = COALESCE($4, notes), closed_by = $5
+     WHERE id = $6 RETURNING *`,
+    [expected, ac, difference, notes || null, req.user.id, session.id]
+  );
+  res.json({ ...rows[0], opening_balance: Number(rows[0].opening_balance), expected_closing: Number(expected), actual_closing: Number(ac), difference: Number(difference) });
+});
+
+// GET /api/financial/register/history - past closed sessions
+router.get('/register/history', allowRoles('manager'), async (req, res) => {
+  const { rows } = await query(`
+    SELECT s.*, uo.full_name AS opened_by_name, uc.full_name AS closed_by_name
+    FROM cash_register_sessions s
+    LEFT JOIN users uo ON uo.id = s.opened_by
+    LEFT JOIN users uc ON uc.id = s.closed_by
+    ORDER BY s.opened_at DESC LIMIT 30
+  `);
+  res.json(rows.map((r) => ({
+    ...r,
+    opening_balance: Number(r.opening_balance),
+    expected_closing: r.expected_closing == null ? null : Number(r.expected_closing),
+    actual_closing: r.actual_closing == null ? null : Number(r.actual_closing),
+    difference: r.difference == null ? null : Number(r.difference),
+  })));
+});
+
 // GET /api/financial/overview - summary of capital, cash box, old debts, customer debts
 router.get('/overview', allowRoles('manager'), async (req, res) => {
   const [cash, capital, oldDebts, billed, paid, collected, costs, general, adjustments, pricingProfit, salary] = await Promise.all([

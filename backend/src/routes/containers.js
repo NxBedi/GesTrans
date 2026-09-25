@@ -13,7 +13,7 @@ export const CONTAINER_SELECT = `
               THEN (c.registration_date - CURRENT_DATE)::int
               ELSE 0 END AS days_until_arrival,
          CASE WHEN CURRENT_DATE < c.registration_date THEN NULL
-              ELSE GREATEST(0, COALESCE(c.free_storage_days, 15) - (CURRENT_DATE - c.registration_date)) END::int AS free_days_left,
+              ELSE (COALESCE(c.free_storage_days, 15) - (CURRENT_DATE - c.registration_date))::int END AS free_days_left,
          EXISTS (
            SELECT 1 FROM invoices liq_i
            JOIN invoice_types liq_t ON liq_t.id = liq_i.invoice_type_id AND LOWER(liq_t.name) = 'liquidation'
@@ -236,14 +236,15 @@ const { bl_number, registration_date, customer_id, container_number, container_t
   // employees cannot change the status (that would bypass the pricing flow);
   // managers change status only through the dedicated endpoints (close/pricing/payments/reopen)
   const nextStatus = cur.status;
-  const freeDays = free_storage_days !== undefined && free_storage_days !== '' ? Number(free_storage_days) : cur.free_storage_days ?? 15;
+const freeDays = free_storage_days !== undefined && free_storage_days !== '' ? Number(free_storage_days) : cur.free_storage_days ?? 15;
   if (!Number.isInteger(freeDays) || freeDays < 0 || freeDays > 365) {
     return res.status(400).json({ error: 'أيام التخزين المجاني يجب أن تكون عدداً بين 0 و 365' });
   }
   try {
     const result = await query(
       `UPDATE containers SET bl_number = $1, registration_date = $2, customer_id = $3,
-         container_number = $4, container_type = $5, contents = $6, quantity = $7, free_storage_days = $8, status = $9, updated_at = now()
+         container_number = $4, container_type = $5, contents = $6, quantity = $7, free_storage_days = $8, status = $9,
+         updated_at = now()
        WHERE id = $10 RETURNING *`,
       [nextBl, nextDate, nextCustomerId, nextCtn, type, nextContents, qty, freeDays, nextStatus, id]
     );

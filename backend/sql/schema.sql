@@ -37,6 +37,8 @@ CREATE TABLE IF NOT EXISTS customers (
 ALTER TABLE customers ADD COLUMN IF NOT EXISTS opening_balance NUMERIC(14,2) NOT NULL DEFAULT 0;
 -- flag: this customer's opening balance was already migrated into old_debts (prevents re-running on every boot)
 ALTER TABLE customers ADD COLUMN IF NOT EXISTS opening_balance_migrated BOOLEAN NOT NULL DEFAULT FALSE;
+-- تاريخ الاستحقاق: تاريخ واجب السداد لكل زبون (خاضع للديون الحالية) لإظهار حالة دين (مستحق/متأخر)
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS due_date DATE;
 
 -- ---------- containers ----------
 CREATE TABLE IF NOT EXISTS containers (
@@ -58,6 +60,12 @@ ALTER TABLE containers ADD COLUMN IF NOT EXISTS quantity INT;
 ALTER TABLE containers ADD COLUMN IF NOT EXISTS free_storage_days INTEGER NOT NULL DEFAULT 15;
 -- الحقل القديم ND أصبح days مجانية (الجدول أُفرغ في تنظيف البيانات، لذا الحذف آمن)
 ALTER TABLE containers DROP COLUMN IF EXISTS nd;
+ALTER TABLE containers DROP COLUMN IF EXISTS port;
+ALTER TABLE containers DROP COLUMN IF EXISTS ship_date;
+ALTER TABLE containers DROP COLUMN IF EXISTS expected_arrival;
+ALTER TABLE containers DROP COLUMN IF EXISTS actual_arrival;
+ALTER TABLE containers DROP COLUMN IF EXISTS shipping_status;
+ALTER TABLE containers DROP COLUMN IF EXISTS container_value;
 -- عمود قديم ميت من نسخ سابقة من النظام — لا يُستخدم في أي كود
 ALTER TABLE containers DROP COLUMN IF EXISTS liquidation_paid_amount;
 ALTER TABLE containers DROP COLUMN IF EXISTS liquidation_paid;
@@ -194,6 +202,27 @@ CREATE TABLE IF NOT EXISTS old_debt_collections (
 );
 CREATE INDEX IF NOT EXISTS idx_old_debt_collections_debt ON old_debt_collections(old_debt_id);
 CREATE INDEX IF NOT EXISTS idx_old_debt_collections_date ON old_debt_collections(collection_date);
+
+-- ---------- cash register sessions (فتح/إغلاق الصندوق يومياً + المطابقة) ----------
+-- opening_balance  = الرصيد الافتتاحي لليوم (عند الفتح)
+-- expected_closing = الرصيد المتوقع عند الإغلاق = opening + صافي الحركات من يوم الفتح حتى الإغلاق
+-- actual_closing   = الرصيد الفعلي المُدقّق عند الإغلاق (عدّ نقدي)
+-- difference       = الفرق بين المتوقع والفعلي (يُسجَّل لتسوية المطابقة، لا يُعدّل النقدية تلقائياً)
+CREATE TABLE IF NOT EXISTS cash_register_sessions (
+  id               SERIAL PRIMARY KEY,
+  opened_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
+  closed_at        TIMESTAMPTZ,
+  opening_balance  NUMERIC(14,2) NOT NULL DEFAULT 0,
+  expected_closing NUMERIC(14,2),
+  actual_closing   NUMERIC(14,2),
+  difference       NUMERIC(14,2),
+  status           VARCHAR(20) NOT NULL DEFAULT 'open', -- 'open' | 'closed'
+  notes            TEXT,
+  opened_by        INT REFERENCES users(id),
+  closed_by        INT REFERENCES users(id)
+);
+CREATE INDEX IF NOT EXISTS idx_cash_register_status ON cash_register_sessions(status);
+CREATE INDEX IF NOT EXISTS idx_cash_register_opened ON cash_register_sessions(opened_at);
 
 -- migration (مرة واحدة فقط لكل زبون): نقل ديون الزبائن القديمة (رصيد النظام السابق) إلى وعاء الديون القديمة
 -- ثم تصفير opening_balance لدى الزبائن حتى لا تُحتسب مرتين في «ديون الزبناء».

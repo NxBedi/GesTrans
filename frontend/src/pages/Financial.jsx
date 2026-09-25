@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { financialApi } from '../utils/api.js';
 import { fmt } from './Dashboard.jsx';
+import RegisterPanel from '../components/RegisterPanel.jsx';
 
 const kindMeta = {
   adjust: { label: 'تسوية الصندوق', color: '#64748b' },
@@ -226,6 +227,9 @@ export default function Financial() {
           <button className="btn btn-outline btn-sm" type="button" onClick={() => setShowOldDebtForm(false)}>إلغاء</button>
         </form>
       )}
+
+      {/* Cash register open/close */}
+      <RegisterPanel />
 
       {/* Summary cards */}
       <div className="grid grid-4" style={{ marginBottom: 8 }}>

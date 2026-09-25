@@ -3,6 +3,9 @@ import { useAuth } from './contexts/AuthContext.jsx';
 import Login from './pages/Login.jsx';
 import Layout from './components/Layout.jsx';
 import Dashboard from './pages/Dashboard.jsx';
+import Debts from './pages/Debts.jsx';
+import Payments from './pages/Payments.jsx';
+import Settings from './pages/Settings.jsx';
 import ListeBL from './pages/ListeBL.jsx';
 import PricingQueue from './pages/PricingQueue.jsx';
 import FinishedContainers from './pages/FinishedContainers.jsx';
@@ -29,6 +32,9 @@ export default function App() {
       <Route path="/login" element={user ? <Navigate to="/" /> : <Login />} />
       <Route element={<Layout />}>
         <Route index element={user ? <Dashboard /> : <Navigate to="/login" />} />
+        <Route path="/debts" element={user && user.role === 'manager' ? <Debts /> : <Navigate to="/" />} />
+        <Route path="/payments" element={user && user.role === 'manager' ? <Payments /> : <Navigate to="/" />} />
+        <Route path="/settings" element={user && user.role === 'manager' ? <Settings /> : <Navigate to="/" />} />
         <Route path="/containers" element={user ? <ListeBL /> : <Navigate to="/login" />} />
         <Route path="/liquidations" element={user && user.role === 'manager' ? <Liquidations /> : <Navigate to="/" />} />
         <Route path="/my-expenses" element={user ? <MyExpenses /> : <Navigate to="/login" />} />

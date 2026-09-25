@@ -103,19 +103,166 @@ router.get('/recent-payments', async (req, res) => {
 // GET /api/reports/customer-balances - what each customer owes (current containers only)
 router.get('/customer-balances', async (req, res) => {
   const { rows } = await query(`
-    SELECT cu.id, cu.name AS customer_name,
+    SELECT cu.id, cu.name AS customer_name, cu.phone, cu.email, cu.due_date,
            COUNT(c.id)::int AS container_count,
            COALESCE(SUM(p.final_price), 0)::numeric AS total_billed,
            COALESCE((SELECT SUM(pay.amount) FROM payments pay WHERE pay.customer_id = cu.id), 0)::numeric AS total_paid,
+           (SELECT MAX(pay.payment_date) FROM payments pay WHERE pay.customer_id = cu.id) AS last_payment_date,
            (COALESCE(SUM(p.final_price), 0)
             - COALESCE((SELECT SUM(pay.amount) FROM payments pay WHERE pay.customer_id = cu.id), 0))::numeric AS balance
     FROM customers cu
     LEFT JOIN containers c ON c.customer_id = cu.id
     LEFT JOIN pricing p ON p.container_id = c.id
-    GROUP BY cu.id, cu.name
+    GROUP BY cu.id, cu.name, cu.phone, cu.email, cu.due_date
     ORDER BY balance DESC
   `);
-  res.json(rows);
+  const today = new Date().toISOString().slice(0, 10);
+  res.json(rows.map((r) => ({
+    ...r,
+    total_billed: Number(r.total_billed),
+    total_paid: Number(r.total_paid),
+    balance: Number(r.balance),
+    // حالة الدين: مدفوع | جزئي | مستحق | متأخر (اعتماداً على الرصيد وتاريخ الاستحقاق)
+    debt_status: Number(r.balance) > 0
+      ? (r.due_date && String(r.due_date).slice(0, 10) < today ? 'overdue' : Number(r.total_paid) > 0 ? 'partial' : 'due')
+      : 'paid',
+  })));
+});
+
+// GET /api/reports/payments - all payments with customer/container context (manager)
+// Supports ?q= (customer name / phone / BL) and date range ?from=&to=&employee_id=
+router.get('/payments', allowRoles('manager'), async (req, res) => {
+  const { q, from, to, employee_id } = req.query;
+  const conds = [];
+  const params = [];
+  const push = (v) => { params.push(v); return `$${params.length}`; };
+  if (q && String(q).trim()) {
+    params.push(`%${String(q).trim()}%`);
+    conds.push(`(cu.name ILIKE $${params.length} OR cu.phone ILIKE $${params.length} OR COALESCE(c.bl_number, '') ILIKE $${params.length})`);
+  }
+  if (from && from !== 'undefined') conds.push(`p.payment_date >= ${push(from)}::date`);
+  if (to && to !== 'undefined') conds.push(`p.payment_date <= ${push(to)}::date`);
+  if (employee_id && employee_id !== 'undefined') conds.push(`p.created_by = ${push(Number(employee_id))}`);
+  const where = conds.length ? `WHERE ${conds.join(' AND ')}` : '';
+  const { rows } = await query(`
+    SELECT p.id, p.customer_id, p.container_id, p.amount, p.payment_date, p.notes,
+           p.created_at, p.created_by,
+           cu.name AS customer_name, cu.phone AS customer_phone,
+           c.bl_number, c.container_number,
+           u.full_name AS created_by_name
+    FROM payments p
+    JOIN customers cu ON cu.id = p.customer_id
+    LEFT JOIN containers c ON c.id = p.container_id
+    LEFT JOIN users u ON u.id = p.created_by
+    ${where}
+    ORDER BY p.payment_date DESC, p.id DESC
+  `, params);
+  const total = rows.reduce((s, r) => s + Number(r.amount), 0);
+  res.json({ records: rows.map((r) => ({ ...r, amount: Number(r.amount) })), count: rows.length, total });
+});
+
+// GET /api/reports/dashboard - KPI bundle for the home page (cash, flows, debts, containers)
+router.get('/dashboard', allowRoles('manager'), async (req, res) => {
+  const today = new Date().toISOString().slice(0, 10);
+  const [cashBox, debts, todayFlows, prevFlows, containerCounts, pricing] = await Promise.all([
+    query(`
+      SELECT (COALESCE((SELECT SUM(amount) FROM capital_transactions),0)
+            + COALESCE((SELECT SUM(amount) FROM cashbox_adjustments),0)
+            + COALESCE((SELECT SUM(amount) FROM payments),0)
+            + COALESCE((SELECT SUM(amount) FROM old_debt_collections),0)
+            - COALESCE((SELECT SUM(amount) FROM invoices),0)
+            - COALESCE((SELECT SUM(amount) FROM general_expenses),0)
+            + COALESCE((SELECT SUM(amount) FROM salary_transactions WHERE amount < 0),0))::numeric AS total
+    `),
+    query(`
+      SELECT cu.id,
+             (COALESCE((SELECT SUM(p.final_price) FROM containers c2 JOIN pricing p ON p.container_id = c2.id WHERE c2.customer_id = cu.id),0)
+              - COALESCE((SELECT SUM(pay.amount) FROM payments pay WHERE pay.customer_id = cu.id),0))::numeric AS balance,
+             cu.due_date
+      FROM customers cu
+    `),
+    query(`
+      SELECT
+        (COALESCE((SELECT SUM(pay.amount) FROM payments pay WHERE pay.payment_date = $1::date),0)
+         + COALESCE((SELECT SUM(od.amount) FROM old_debt_collections od WHERE od.collection_date = $1::date),0)
+         + COALESCE((SELECT SUM(cap.amount) FROM capital_transactions cap WHERE cap.txn_date = $1::date AND cap.amount > 0),0)
+         + COALESCE((SELECT SUM(adj.amount) FROM cashbox_adjustments adj WHERE adj.adj_date = $1::date AND adj.amount > 0),0))::numeric AS income,
+        (COALESCE((SELECT SUM(i.amount) FROM invoices i WHERE i.entry_date = $1::date),0)
+         + COALESCE((SELECT SUM(g.amount) FROM general_expenses g WHERE g.expense_date = $1::date),0)
+         + COALESCE((SELECT SUM(-s.amount) FROM salary_transactions s WHERE s.txn_date = $1::date),0)
+         + COALESCE((SELECT SUM(-cap.amount) FROM capital_transactions cap WHERE cap.txn_date = $1::date AND cap.amount < 0),0)
+         + COALESCE((SELECT SUM(-adj.amount) FROM cashbox_adjustments adj WHERE adj.adj_date = $1::date AND adj.amount < 0),0))::numeric AS expense
+    `, [today]),
+    query(`
+      SELECT
+        (COALESCE((SELECT SUM(pay.amount) FROM payments pay WHERE pay.payment_date = (($1::date) - 1)),0)
+         + COALESCE((SELECT SUM(od.amount) FROM old_debt_collections od WHERE od.collection_date = (($1::date) - 1)),0)
+         + COALESCE((SELECT SUM(cap.amount) FROM capital_transactions cap WHERE cap.txn_date = (($1::date) - 1) AND cap.amount > 0),0)
+         + COALESCE((SELECT SUM(adj.amount) FROM cashbox_adjustments adj WHERE adj.adj_date = (($1::date) - 1) AND adj.amount > 0),0))::numeric AS income,
+        (COALESCE((SELECT SUM(i.amount) FROM invoices i WHERE i.entry_date = (($1::date) - 1)),0)
+         + COALESCE((SELECT SUM(g.amount) FROM general_expenses g WHERE g.expense_date = (($1::date) - 1)),0)
+         + COALESCE((SELECT SUM(-s.amount) FROM salary_transactions s WHERE s.txn_date = (($1::date) - 1)),0)
+         + COALESCE((SELECT SUM(-cap.amount) FROM capital_transactions cap WHERE cap.txn_date = (($1::date) - 1) AND cap.amount < 0),0)
+         + COALESCE((SELECT SUM(-adj.amount) FROM cashbox_adjustments adj WHERE adj.adj_date = (($1::date) - 1) AND adj.amount < 0),0))::numeric AS expense
+    `, [today]),
+    query(`
+      SELECT status, COUNT(*)::int AS count
+      FROM containers GROUP BY status
+    `),
+    query(`SELECT COALESCE(SUM(final_price),0)::numeric AS billed, COALESCE(SUM(profit),0)::numeric AS profit FROM pricing`),
+  ]);
+
+  const cashTotal = Number(cashBox.rows[0].total);
+  const todayIncome = Number(todayFlows.rows[0].income) || 0;
+  const todayExpense = Number(todayFlows.rows[0].expense) || 0;
+  const prevIncome = Number(prevFlows.rows[0].income) || 0;
+  const prevExpense = Number(prevFlows.rows[0].expense) || 0;
+
+  let totalDebt = 0, overdueAmount = 0, overdueCount = 0, debtors = 0;
+  const now = today;
+  for (const r of debts.rows) {
+    const b = Number(r.balance);
+    if (b > 0) {
+      totalDebt += b;
+      debtors++;
+      if (r.due_date && String(r.due_date).slice(0, 10) < now) {
+        overdueAmount += b;
+        overdueCount++;
+      }
+    }
+  }
+
+  const byStatus = { registered: 0, processing: 0, closed: 0, priced: 0 };
+  let totalContainers = 0;
+  for (const r of containerCounts.rows) {
+    byStatus[r.status] = (byStatus[r.status] || 0) + r.count;
+    totalContainers += r.count;
+  }
+
+  const pct = (cur, prev) => (cur === 0 && prev === 0 ? 0 : prev === 0 ? 100 : Math.round(((cur - prev) / Math.abs(prev)) * 100));
+
+  res.json({
+    cash_in_hand: cashTotal,
+    today: { income: todayIncome, expense: todayExpense, net: todayIncome - todayExpense },
+    yesterday: { income: prevIncome, expense: prevExpense },
+    income_change_pct: pct(todayIncome, prevIncome),
+    expense_change_pct: pct(todayExpense, prevExpense),
+    debts: {
+      total: +totalDebt.toFixed(2),
+      debtors,
+      overdue_count: overdueCount,
+      overdue_amount: +overdueAmount.toFixed(2),
+    },
+    containers: {
+      total: totalContainers,
+      present: (byStatus.registered || 0) + (byStatus.processing || 0),
+      in_transit: byStatus.closed || 0,
+      received: byStatus.priced || 0,
+      by_status: byStatus,
+    },
+    billed_total: Number(pricing.rows[0].billed),
+    profit_total: Number(pricing.rows[0].profit),
+  });
 });
 
 // GET /api/reports/containers?status=&from=&to=
