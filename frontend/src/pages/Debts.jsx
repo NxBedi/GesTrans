@@ -29,6 +29,10 @@ export default function Debts() {
   const [paying, setPaying] = useState(false);
   const [dueForm, setDueForm] = useState(null);
   const [dueDate, setDueDate] = useState('');
+  const [showNew, setShowNew] = useState(false);
+  const [newForm, setNewForm] = useState({ name: '', phone: '', address: '', notes: '' });
+  const [newErr, setNewErr] = useState('');
+  const [saving, setSaving] = useState(false);
 
   const load = () => {
     reportsApi.balances().then(setRows).catch(() => {}).finally(() => setLoading(false));
@@ -111,6 +115,22 @@ export default function Debts() {
     } catch (err) { toast(err.message, 'error'); }
   };
 
+  const openNew = () => { setNewForm({ name: '', phone: '', address: '', notes: '' }); setNewErr(''); setShowNew(true); };
+
+  const saveNew = async (e) => {
+    e.preventDefault();
+    setNewErr('');
+    if (!newForm.name.trim()) { setNewErr('اسم العميل مطلوب'); return; }
+    setSaving(true);
+    try {
+      const r = await customersApi.create(newForm);
+      toast(`تمت إضافة العميل ${r.name}`);
+      setShowNew(false);
+      load();
+    } catch (err) { setNewErr(err.message); }
+    finally { setSaving(false); }
+  };
+
   const doExport = () => {
     exportExcel('ديون_العملاء', [
       { key: 'customer_name', header: 'العميل' },
@@ -140,7 +160,10 @@ export default function Debts() {
           <h1 className="page-title">العملاء والديون</h1>
           <p className="page-sub">تتبع أرصدة العملاء: المدفوع، المتبقي، حالات الاستحقاق والتأخر</p>
         </div>
-        <button className="btn btn-primary" onClick={doExport}>⬇ تصدير Excel</button>
+        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+          <button className="btn btn-primary" onClick={openNew}>➕ زبون جديد</button>
+          <button className="btn btn-outline" onClick={doExport}>⬇ تصدير Excel</button>
+        </div>
       </div>
 
       <div className="kpi-grid" style={{ marginBottom: 20 }}>
@@ -218,6 +241,36 @@ export default function Debts() {
           </tbody>
         </table>
       </div>
+
+      {showNew && (
+        <div className="modal-overlay" onClick={() => setShowNew(false)}>
+          <form className="modal" style={{ maxWidth: 480 }} onClick={(e) => e.stopPropagation()} onSubmit={saveNew}>
+            <div className="modal-title">زبون جديد</div>
+            <div className="modal-sub">أضف عميلاً جديداً لتتبع ديونه وتسجيل الحاويات باسمه</div>
+            <div className="form-row">
+              <label className="form-label">اسم العميل *</label>
+              <input className="input" value={newForm.name} onChange={(e) => setNewForm({ ...newForm, name: e.target.value })} autoFocus />
+            </div>
+            <div className="form-row">
+              <label className="form-label">الهاتف</label>
+              <input className="input" dir="ltr" value={newForm.phone} onChange={(e) => setNewForm({ ...newForm, phone: e.target.value })} />
+            </div>
+            <div className="form-row">
+              <label className="form-label">العنوان</label>
+              <input className="input" value={newForm.address} onChange={(e) => setNewForm({ ...newForm, address: e.target.value })} />
+            </div>
+            <div className="form-row">
+              <label className="form-label">ملاحظات</label>
+              <textarea className="input" rows={2} value={newForm.notes} onChange={(e) => setNewForm({ ...newForm, notes: e.target.value })} />
+            </div>
+            {newErr && <div className="form-error">{newErr}</div>}
+            <div className="modal-actions">
+              <button className="btn btn-outline" type="button" onClick={() => setShowNew(false)}>إلغاء</button>
+              <button className="btn btn-success" type="submit" disabled={saving}>{saving ? '...' : 'حفظ العميل'}</button>
+            </div>
+          </form>
+        </div>
+      )}
 
       {showPay && (
         <div className="modal-overlay" onClick={() => setShowPay(null)}>
