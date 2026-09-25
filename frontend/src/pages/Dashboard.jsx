@@ -1,17 +1,31 @@
 import { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext.jsx';
 import { reportsApi, containersApi } from '../utils/api.js';
 
 const statusLabels = { registered: 'مسجلة', processing: 'قيد تسجيل الفواتير', closed: 'جاهزة للتسعير', priced: 'تم التسعير' };
 
+const mru = (n) => new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 2 }).format(Number(n || 0)) + ' MRU';
+const ddmm = (iso) => {
+  if (!iso) return '';
+  const [y, m, d] = String(iso).split('-');
+  return `${d}/${m}/${y}`;
+};
+
 export default function Dashboard() {
   const { user } = useAuth();
   const isManager = user?.role === 'manager';
   const [summary, setSummary] = useState(null);
+  const [payments, setPayments] = useState({ today_total: 0, recent: [] });
+  const [balances, setBalances] = useState([]);
   const [recent, setRecent] = useState([]);
 
   useEffect(() => {
-    if (isManager) reportsApi.summary().then(setSummary).catch(() => {});
+    if (isManager) {
+      reportsApi.summary().then(setSummary).catch(() => {});
+      reportsApi.recentPayments().then(setPayments).catch(() => {});
+      reportsApi.balances().then(setBalances).catch(() => {});
+    }
     containersApi.list().then((rows) => setRecent(rows.slice(0, 8))).catch(() => {});
   }, [user]);
 
@@ -25,55 +39,73 @@ export default function Dashboard() {
     );
   }
 
+  const clients = summary?.customers ?? 0;
+  const solde = Number(summary?.cash_box ?? 0);
+  const totalBL = Object.values(summary?.containers ?? {}).reduce((a, b) => a + b, 0);
+  const endettes = balances.filter((b) => Number(b.balance) > 0).length;
+  const charges = Number(summary?.totals?.costs ?? 0);
+  const todayTotal = Number(payments.today_total ?? 0);
+  const derniers = (payments.recent || []).slice(0, 5);
+
   return (
     <div className="page">
-      <h1 className="page-title">لوحة التحكم</h1>
-      <p className="page-sub">نظرة عامة على النشاط</p>
-
-      <div className="grid grid-4">
-        <StatCard label="قيد المعالجة" value={(summary?.containers?.registered ?? 0) + (summary?.containers?.processing ?? 0)} tint="#f59e0b" />
-        <StatCard label="جاهزة للتسعير" value={summary?.containers?.closed ?? 0} tint="#7c3aed" />
-        <StatCard label="مُسعّرة" value={summary?.containers?.priced ?? 0} tint="#3b82f6" />
-        <StatCard label="إجمالي الحاويات" value={(summary?.containers?.registered ?? 0) + (summary?.containers?.processing ?? 0) + (summary?.containers?.closed ?? 0) + (summary?.containers?.priced ?? 0)} tint="#64748b" />
+      <div className="dash-row">
+        <SummaryCard icon="👥" iconBg="#8b5cf6" label="Clients" to="/customers" value={fmt(clients)} valueColor="#0f172a" />
+        <SummaryCard icon="🏦" iconBg="#16a34a" label="Solde caisse" to="/financial" value={mru(solde)} valueColor="#16a34a" />
+        <SummaryCard icon="📄" iconBg="#f59e0b" label="Total BL" to="/containers" value={fmt(totalBL)} valueColor="#d97706" />
+        <SummaryCard icon="⚠️" iconBg="#dc2626" label="Clients endettés" to="/balances" value={fmt(endettes)} valueColor="#dc2626" />
       </div>
 
-      <div className="grid grid-3" style={{ marginTop: 16 }}>
-        <div className="card stat-card">
-          <div className="stat-value" style={{ color: Number(summary?.cash_box) >= 0 ? '#0d9488' : '#dc2626' }}>{fmt(summary?.cash_box)}</div>
-          <div className="stat-label">النقد في الصندوق</div>
+      <div className="dash-row-2">
+        <div className="card">
+          <div className="dash-label">Charges payées (total) <span className="dash-arrow">↗</span></div>
+          <div className="dash-big-value" style={{ color: '#e11d48', textAlign: 'left' }}>{mru(charges)}</div>
         </div>
-        <div className="card stat-card">
-          <div className="stat-value" style={{ color: Number(summary?.opening_debts) > 0 ? '#7c3aed' : '#16a34a' }}>{fmt(summary?.opening_debts)}</div>
-          <div className="stat-label">الديون القديمة المتبقية</div>
-        </div>
-        <div className="card stat-card">
-          <div className="stat-value" style={{ color: '#16a34a' }}>{fmt(summary?.totals?.profit)}</div>
-          <div className="stat-label">إجمالي الأرباح</div>
+        <div className="card">
+          <div className="dash-label">Versements aujourd'hui <span className="dash-arrow">↗</span></div>
+          <div className="dash-big-value" style={{ color: '#16a34a', textAlign: 'left' }}>{mru(todayTotal)}</div>
         </div>
       </div>
 
-      <div className="grid grid-3" style={{ marginTop: 16 }}>
-        <div className="card stat-card">
-          <div className="stat-value" style={{ color: '#dc2626' }}>{fmt(summary?.general_expenses)}</div>
-          <div className="stat-label">مصاريف المؤسسة</div>
+      <div className="card" style={{ padding: 0, overflow: 'hidden', marginTop: 16 }}>
+        <h3 style={{ padding: '16px 20px 0' }}>🕐 Derniers versements</h3>
+        <div style={{ padding: 12 }}>
+          <table className="table">
+            <thead>
+              <tr>
+                <th style={{ textAlign: 'right' }}>Client</th>
+                <th style={{ textAlign: 'right' }}>Date</th>
+                <th style={{ textAlign: 'right' }}>Montant</th>
+              </tr>
+            </thead>
+            <tbody>
+              {derniers.length === 0 && (
+                <tr><td colSpan="3" className="muted" style={{ textAlign: 'center', padding: 20 }}>Aucun versement</td></tr>
+              )}
+              {derniers.map((p) => (
+                <tr key={p.id}>
+                  <td style={{ textAlign: 'right' }}>{p.customer_name}</td>
+                  <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>{ddmm(p.payment_date)}</td>
+                  <td style={{ textAlign: 'right', color: '#16a34a', fontWeight: 800, whiteSpace: 'nowrap' }}>{mru(p.amount)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
-        <div className="card stat-card">
-          <div className="stat-value" style={{ color: Number(summary?.totals?.profit) - Number(summary?.general_expenses) >= 0 ? '#16a34a' : '#dc2626' }}>
-            {fmt(Number(summary?.totals?.profit) - Number(summary?.general_expenses))}
-          </div>
-          <div className="stat-label">الربح الصافي (بعد مصاريف المؤسسة)</div>
-        </div>
-        <div className="card stat-card">
-          <div className="stat-value" style={{ color: Number(summary?.customer_debt) > 0 ? '#dc2626' : '#16a34a' }}>{fmt(summary?.customer_debt)}</div>
-          <div className="stat-label">صافي مستحقات الزبائن (موجب = دين لنا)</div>
-        </div>
-      </div>
-
-      <div style={{ marginTop: 24 }}>
-        <h2 style={{ fontSize: 17, fontWeight: 800, marginBottom: 12 }}>أحدث الحاويات</h2>
-        <ContainerTable rows={recent} />
       </div>
     </div>
+  );
+}
+
+function SummaryCard({ icon, iconBg, label, to, value, valueColor }) {
+  return (
+    <Link to={to} className="card dash-card">
+      <div className="dash-icon" style={{ background: iconBg }}><span>{icon}</span></div>
+      <div style={{ minWidth: 0 }}>
+        <div className="dash-label">{label} <span className="dash-arrow">↗</span></div>
+        <div className="dash-value" style={{ color: valueColor }}>{value}</div>
+      </div>
+    </Link>
   );
 }
 

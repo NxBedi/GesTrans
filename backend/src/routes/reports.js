@@ -81,6 +81,25 @@ router.get('/summary', async (req, res) => {
   });
 });
 
+// GET /api/reports/recent-payments - payments summary for the dashboard (today total + last 10)
+router.get('/recent-payments', async (req, res) => {
+  const [todayRow, recentRows] = await Promise.all([
+    query(`SELECT COALESCE(SUM(amount),0)::numeric AS total FROM payments WHERE payment_date = CURRENT_DATE`),
+    query(`
+      SELECT p.id, p.customer_id, cu.name AS customer_name, p.amount,
+             to_char(p.payment_date, 'YYYY-MM-DD') AS payment_date
+      FROM payments p
+      JOIN customers cu ON cu.id = p.customer_id
+      ORDER BY p.payment_date DESC, p.id DESC
+      LIMIT 10
+    `),
+  ]);
+  res.json({
+    today_total: Number(todayRow.rows[0].total),
+    recent: recentRows.rows.map((r) => ({ ...r, amount: Number(r.amount) })),
+  });
+});
+
 // GET /api/reports/customer-balances - what each customer owes (current containers only)
 router.get('/customer-balances', async (req, res) => {
   const { rows } = await query(`

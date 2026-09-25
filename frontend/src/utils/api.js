@@ -121,6 +121,7 @@ export const reportsApi = {
   summary: () => api('/reports/summary'),
   profits: (params = {}) => api('/reports/profits' + buildQs(params)),
   balances: () => api('/reports/customer-balances'),
+  recentPayments: () => api('/reports/recent-payments'),
   containers: (params = {}) => api('/reports/containers' + buildQs(params)),
   expenses: (params = {}) => api('/reports/expenses' + buildQs(params)),
   expensesSummary: (params = {}) => api('/reports/expenses-summary' + buildQs(params)),
