@@ -277,8 +277,7 @@ export default function Debts() {
                 <td className="nowrap" style={{ color: Number(r.old_debts) > 0 ? '#f59e0b' : 'var(--muted)' }}>{Number(r.old_debts) > 0 ? fmt(r.old_debts) : '—'}</td>
                 <td className="nowrap" style={{ color: '#16a34a', fontWeight: 700 }}>{fmt(r.total_paid)}</td>
                 <td className="nowrap" style={{ fontWeight: 800, color: Number(r.balance) > 0 ? '#d97706' : '#16a34a' }}>{fmt(r.balance)}</td>
-                <td className="nowrap">{dmy(r.last_payment_date)}</td>
-                <td className="nowrap">{dmy(r.due_date)}</td>
+
                 <td><span className={`badge ${DEBT_BADGE[r.debt_status] || 'badge-due'}`}>{DEBT_LABELS[r.debt_status] || r.debt_status}</span></td>
                 <td style={{ textAlign: 'center', whiteSpace: 'nowrap' }}>
                   <button className="btn btn-success btn-sm" onClick={() => openPay(r)}>💳 دفعة</button>{' '}
