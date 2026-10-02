@@ -1,0 +1,307 @@
+import { Router } from 'express';
+import { query, pool } from '../db.js';
+import { authRequired, allowRoles } from '../middleware/auth.js';
+
+const router = Router();
+router.use(authRequired);
+
+/**
+ * النموذج المحاسبي:
+ *   رأس المال المستثمر = مجموع مساهمات المالك فقط (إيداعات − سحوبات) — غير محدود، متعدد المصادر.
+ *   النقدية في الصندوق = كل ما دخل فعلاً − كل ما خرج فعلاً (محاسبة حركة، لا رأس مال محدد سلفاً):
+ *                     إيداعات وسحوبات رأس المال + تسويات يدوية + التحصيلات من الزبائن
+ *                     − تكاليف الحاويات المدفوعة − مصاريف المؤسسة − الرواتب المدفوعة.
+ *   النتيجة التشغيلية المحققة نقداً = نقدية الصندوق − رأس المال المستثمر.
+ * المصاريف والديون والأرباح تُتتبَّع كلٌّ منها مستقلة عن رأس المال.
+ * الدين القديم لكل زبون يُحتسب داخل حسابه (customers.opening_balance) ويُسدد بالإيداع مثل بقية الحسابات.
+ */
+
+// GET /api/financial/register/current - open cash register session (with live expected closing)
+router.get('/register/current', allowRoles('manager'), async (req, res) => {
+  const { rows } = await query(`
+    SELECT s.*, (s.opened_at::date)::text AS opened_day, u.full_name AS opened_by_name
+    FROM cash_register_sessions s LEFT JOIN users u ON u.id = s.opened_by
+    WHERE s.status = 'open' ORDER BY s.opened_at DESC LIMIT 1
+  `);
+  const session = rows[0] || null;
+  if (!session) return res.json(null);
+  // الرصيد المتوقع حالياً = الرصيد الافتتاحي + صافي الحركات منذ يوم الفتح حتى اليوم
+  const openedDate = session.opened_day || new Date().toISOString().slice(0, 10);
+  const flows = await query(`
+    SELECT
+      (COALESCE((SELECT SUM(pay.amount) FROM payments pay WHERE pay.payment_date >= $1::date),0)
+       + COALESCE((SELECT SUM(cap.amount) FROM capital_transactions cap WHERE cap.txn_date >= $1::date),0)
+       + COALESCE((SELECT SUM(adj.amount) FROM cashbox_adjustments adj WHERE adj.adj_date >= $1::date),0)
+       - COALESCE((SELECT SUM(i.amount) FROM invoices i WHERE i.entry_date >= $1::date),0)
+       - COALESCE((SELECT SUM(g.amount) FROM general_expenses g WHERE g.expense_date >= $1::date),0)
+       - COALESCE((SELECT SUM(-s.amount) FROM salary_transactions s WHERE s.txn_date >= $1::date),0))::numeric AS net
+  `, [openedDate]);
+  const expected = Number(session.opening_balance) + Number(flows.rows[0].net);
+  res.json({ ...session, opening_balance: Number(session.opening_balance), expected_closing: expected, current_net: Number(flows.rows[0].net) });
+});
+
+// POST /api/financial/register/open - open the cash register for the day
+router.post('/register/open', allowRoles('manager'), async (req, res) => {
+  const { opening_balance, notes } = req.body || {};
+  const ob = Number(opening_balance);
+  if (opening_balance === undefined || opening_balance === '' || !isFinite(ob)) {
+    return res.status(400).json({ error: 'أدخل رصيداً افتتاحياً صحيحاً' });
+  }
+  const open = await query(`SELECT id FROM cash_register_sessions WHERE status = 'open' LIMIT 1`);
+  if (open.rows.length) return res.status(400).json({ error: 'الصندوق مفتوح بالفعل — أغلقه أولاً' });
+  const { rows } = await query(
+    `INSERT INTO cash_register_sessions (opening_balance, notes, opened_by)
+     VALUES ($1, $2, $3) RETURNING *`,
+    [ob, notes || null, req.user.id]
+  );
+  res.status(201).json({ ...rows[0], opening_balance: Number(rows[0].opening_balance) });
+});
+
+// POST /api/financial/register/close - close the register, reconcile expected vs actual
+router.post('/register/close', allowRoles('manager'), async (req, res) => {
+  const { actual_closing, notes } = req.body || {};
+  const ac = Number(actual_closing);
+  if (actual_closing === undefined || actual_closing === '' || !isFinite(ac)) {
+    return res.status(400).json({ error: 'أدخل الرصيد الفعلي المُدقّق بعد العدد' });
+  }
+  const open = await query(`SELECT *, (opened_at::date)::text AS opened_day FROM cash_register_sessions WHERE status = 'open' ORDER BY opened_at DESC LIMIT 1`);
+  if (!open.rows.length) return res.status(400).json({ error: 'الصندوق ليس مفتوحاً' });
+  const session = open.rows[0];
+  const openedDate = session.opened_day || new Date().toISOString().slice(0, 10);
+  const flows = await query(`
+    SELECT
+      (COALESCE((SELECT SUM(pay.amount) FROM payments pay WHERE pay.payment_date >= $1::date),0)
+       + COALESCE((SELECT SUM(cap.amount) FROM capital_transactions cap WHERE cap.txn_date >= $1::date),0)
+       + COALESCE((SELECT SUM(adj.amount) FROM cashbox_adjustments adj WHERE adj.adj_date >= $1::date),0)
+       - COALESCE((SELECT SUM(i.amount) FROM invoices i WHERE i.entry_date >= $1::date),0)
+       - COALESCE((SELECT SUM(g.amount) FROM general_expenses g WHERE g.expense_date >= $1::date),0)
+       - COALESCE((SELECT SUM(-s.amount) FROM salary_transactions s WHERE s.txn_date >= $1::date),0))::numeric AS net
+  `, [openedDate]);
+  const expected = Number(session.opening_balance) + Number(flows.rows[0].net);
+  const difference = ac - expected;
+  const { rows } = await query(
+    `UPDATE cash_register_sessions
+     SET status = 'closed', closed_at = now(), expected_closing = $1, actual_closing = $2, difference = $3, notes = COALESCE($4, notes), closed_by = $5
+     WHERE id = $6 RETURNING *`,
+    [expected, ac, difference, notes || null, req.user.id, session.id]
+  );
+  res.json({ ...rows[0], opening_balance: Number(rows[0].opening_balance), expected_closing: Number(expected), actual_closing: Number(ac), difference: Number(difference) });
+});
+
+// GET /api/financial/register/history - past closed sessions
+router.get('/register/history', allowRoles('manager'), async (req, res) => {
+  const { rows } = await query(`
+    SELECT s.*, uo.full_name AS opened_by_name, uc.full_name AS closed_by_name
+    FROM cash_register_sessions s
+    LEFT JOIN users uo ON uo.id = s.opened_by
+    LEFT JOIN users uc ON uc.id = s.closed_by
+    ORDER BY s.opened_at DESC LIMIT 30
+  `);
+  res.json(rows.map((r) => ({
+    ...r,
+    opening_balance: Number(r.opening_balance),
+    expected_closing: r.expected_closing == null ? null : Number(r.expected_closing),
+    actual_closing: r.actual_closing == null ? null : Number(r.actual_closing),
+    difference: r.difference == null ? null : Number(r.difference),
+  })));
+});
+
+// GET /api/financial/overview - summary of capital, cash box, old debts, customer debts
+router.get('/overview', allowRoles('manager'), async (req, res) => {
+  const [cash, capital, oldDebts, billed, paid, collected, costs, general, adjustments, pricingProfit, salary] = await Promise.all([
+    // النقدية الفعلية في الصندوق (محصلة كل الحركات)
+    query(`
+      SELECT (COALESCE((SELECT SUM(amount) FROM capital_transactions),0)
+            + COALESCE((SELECT SUM(amount) FROM cashbox_adjustments),0)
+            + COALESCE((SELECT SUM(amount) FROM payments),0)
+            - COALESCE((SELECT SUM(amount) FROM invoices),0)
+            - COALESCE((SELECT SUM(amount) FROM general_expenses),0)
+            + COALESCE((SELECT SUM(amount) FROM salary_transactions WHERE amount < 0),0))::numeric AS total
+    `),
+    // رأس المال المستثمر = مساهمات المالك فقط (مستقل عن نشاط الصندوق)
+    query('SELECT COALESCE(SUM(amount),0)::numeric AS total FROM capital_transactions'),
+    // الدين القديم المتبقي لدى الزبائن (رصيد سابق داخل كل حساب — لا يؤثر على الصندوق)
+    query(`
+      SELECT (COALESCE((SELECT SUM(opening_balance) FROM customers),0)
+            + COALESCE((SELECT SUM(amount) FROM customer_old_debts),0))::numeric AS total
+    `),
+    // إجمالي فواتير الحاويات (قيمة البيع)
+    query('SELECT COALESCE(SUM(final_price),0)::numeric AS total FROM pricing'),
+    // إجمالي ما دفعه الزبائن
+    query('SELECT COALESCE(SUM(amount),0)::numeric AS total FROM payments'),
+    // التحصيلات (المدفوعات)
+    query('SELECT COALESCE(SUM(amount),0)::numeric AS total FROM payments'),
+    // تكاليف الحاويات المدفوعة
+    query('SELECT COALESCE(SUM(amount),0)::numeric AS total FROM invoices'),
+    // مصاريف المؤسسة
+    query('SELECT COALESCE(SUM(amount),0)::numeric AS total FROM general_expenses'),
+    // تسويات الصندوق
+    query('SELECT COALESCE(SUM(amount),0)::numeric AS total FROM cashbox_adjustments'),
+    // أرباح الحاويات = final_price − total_costs
+    query('SELECT COALESCE(SUM(profit),0)::numeric AS total FROM pricing'),
+    // إجمالي الرواتب المدفوعة نقداً (تُخصم من الصندوق)
+    query('SELECT COALESCE(SUM(-amount),0)::numeric AS total FROM salary_transactions WHERE amount < 0'),
+  ]);
+
+  const cashTotal = Number(cash.rows[0].total);
+  const capitalInvested = Number(capital.rows[0].total);
+  const oldDebtTotal = Number(oldDebts.rows[0].total);
+  const billedTotal = Number(billed.rows[0].total);
+  const paidTotal = Number(paid.rows[0].total);
+  const collectedTotal = Number(collected.rows[0].total);
+  const costsTotal = Number(costs.rows[0].total);
+  const containerProfit = Number(pricingProfit.rows[0].total);
+
+  // صافي مستحقات الزبائن: موجب = يدين لنا، سالب = سلف من الزبائن (يشمل الدين القديم)
+  const customerDebt = oldDebtTotal + billedTotal - paidTotal;
+
+  // النتيجة التشغيلية محققة نقداً = نقدية الصندوق − رأس المال المستثمر
+  const operationalResult = cashTotal - capitalInvested;
+
+  res.json({
+    // رأس المال المستثمر = مساهمات المالك فقط (مستقل عن نشاط الصندوق)
+    capital_invested: capitalInvested,
+    // النقدية الفعلية في الصندوق (محصلة كل الحركات)
+    cash_box: cashTotal,
+    // النتيجة التشغيلية المحققة نقداً (أرباح/خسائر تشغيلية + فروقات توقيت التحصيل)
+    operational_cash_result: operationalResult,
+    // حقول متوافقة للخلف (مؤقتة)
+    capital: capitalInvested,
+    cash_capital: cashTotal,
+    old_debts: oldDebtTotal,
+    customer_debt: customerDebt,
+    total_collections: collectedTotal,
+    total_container_costs: costsTotal,
+    total_general_expenses: Number(general.rows[0].total),
+    total_salary_paid: Number(salary.rows[0].total),
+    total_adjustments: Number(adjustments.rows[0].total),
+    total_billed: billedTotal,
+    profit: containerProfit,
+  });
+});
+
+// GET /api/financial/movements - unified cash ledger (with optional date filter)
+router.get('/movements', allowRoles('manager'), async (req, res) => {
+  const { from, to } = req.query;
+  const conds = [];
+  const params = [];
+  const push = (v) => { params.push(v); return `$${params.length}`; };
+  // NOTE: `d` is rendered as TEXT (to_char 'YYYY-MM-DD') in the CTE below, so we must
+  // compare it against text (ISO dates sort lexicographically = chronologically).
+  if (from && from !== 'undefined') conds.push(`d >= ${push(from)}`);
+  if (to && to !== 'undefined') conds.push(`d <= ${push(to)}`);
+  const scope = conds.length ? `WHERE ${conds.join(' AND ')}` : '';
+
+  const { rows } = await query(`
+    WITH parts AS (
+      SELECT to_char(a.adj_date, 'YYYY-MM-DD') AS d, a.amount, 'adjust' AS kind, 'تسوية الصندوق' AS descr, a.notes AS ref
+        FROM cashbox_adjustments a
+      UNION ALL
+      SELECT to_char(c.txn_date, 'YYYY-MM-DD'), c.amount, 'capital'::text AS kind,
+             CASE WHEN c.amount > 0 THEN 'إيداع رأس مال' ELSE 'سحب رأس مال' END AS descr,
+             COALESCE(c.source, 'أموال المالك') AS ref
+        FROM capital_transactions c
+      UNION ALL
+      SELECT to_char(p.payment_date, 'YYYY-MM-DD'), p.amount, 'collection' AS kind,
+             'تحصيل من ' || c.name AS descr, p.notes AS ref
+        FROM payments p JOIN customers c ON c.id = p.customer_id
+      UNION ALL
+      SELECT to_char(i.entry_date, 'YYYY-MM-DD'), -i.amount, 'cost'::text AS kind,
+             'تكاليف حاوية ' || ct.bl_number || ' — ' || COALESCE(u.full_name, 'بدون سجل') AS descr, it.name AS ref
+        FROM invoices i
+        JOIN containers ct ON ct.id = i.container_id
+        JOIN invoice_types it ON it.id = i.invoice_type_id
+        LEFT JOIN users u ON u.id = i.entered_by
+      UNION ALL
+      SELECT to_char(g.expense_date, 'YYYY-MM-DD'), -g.amount, 'expense'::text AS kind,
+             'مصروف مؤسسة: ' || g.category AS descr, g.description AS ref
+        FROM general_expenses g
+      UNION ALL
+      SELECT to_char(s.txn_date, 'YYYY-MM-DD'), s.amount, 'salary'::text AS kind,
+             CASE s.kind WHEN 'advance' THEN 'دفع مقدم من الراتب: ' ELSE 'دفع بقية الراتب: ' END || u.full_name AS descr,
+             s.notes AS ref
+        FROM salary_transactions s
+        JOIN users u ON u.id = s.user_id
+       WHERE s.amount < 0
+    )
+    SELECT d, amount, kind, descr, ref FROM parts ${scope}
+    ORDER BY d DESC
+  `, params);
+
+  res.json(rows.map((r) => ({ ...r, amount: Number(r.amount) })));
+});
+
+// GET /api/financial/capital - list of capital transactions (deposits/withdrawals per source)
+router.get('/capital/list', allowRoles('manager'), async (req, res) => {
+  const { from, to } = req.query;
+  const conds = [];
+  const params = [];
+  const push = (v) => { params.push(v); return `$${params.length}`; };
+  if (from && from !== 'undefined') conds.push(`txn_date >= ${push(from)}::date`);
+  if (to && to !== 'undefined') conds.push(`txn_date <= ${push(to)}::date`);
+  const where = conds.length ? `WHERE ${conds.join(' AND ')}` : '';
+  const { rows } = await query(`
+    SELECT to_char(c.txn_date, 'YYYY-MM-DD') AS txn_date, c.amount, c.source, c.notes, c.id, u.full_name AS entered_by_name
+    FROM capital_transactions c LEFT JOIN users u ON u.id = c.entered_by
+    ${where} ORDER BY txn_date DESC, c.id DESC`, params);
+  res.json(rows.map((r) => ({ ...r, amount: Number(r.amount) })));
+});
+
+// POST /api/financial/capital - record an owner contribution (+) / withdrawal (-), with its source
+router.post('/capital', allowRoles('manager'), async (req, res) => {
+  const { amount, txn_date, source, notes } = req.body || {};
+  const amt = Number(amount);
+  if (amount === undefined || amount === '' || !isFinite(amt) || amt === 0) {
+    return res.status(400).json({ error: 'المبلغ مطلوب ويجب ألا يكون صفراً' });
+  }
+  if (!txn_date) return res.status(400).json({ error: 'التاريخ مطلوب' });
+  const { rows } = await query(
+    `INSERT INTO capital_transactions (amount, txn_date, source, notes, entered_by)
+     VALUES ($1, $2, $3, $4, $5) RETURNING *`,
+    [amt, txn_date, (source && String(source).trim()) || 'أموال المالك', notes || null, req.user.id]
+  );
+  res.status(201).json({ ...rows[0], amount: Number(rows[0].amount) });
+});
+
+// DELETE /api/financial/capital/:id
+router.delete('/capital/:id', allowRoles('manager'), async (req, res) => {
+  const id = Number(req.params.id);
+  const { rowCount } = await query('DELETE FROM capital_transactions WHERE id = $1', [id]);
+  if (!rowCount) return res.status(404).json({ error: 'العملية غير موجودة' });
+  res.status(204).end();
+});
+
+// GET /api/financial/adjustments - list of cashbox manual adjustments
+router.get('/adjustments/list', allowRoles('manager'), async (req, res) => {
+  const { rows } = await query(`
+    SELECT to_char(a.adj_date, 'YYYY-MM-DD') AS adj_date, a.amount, a.notes, a.id, u.full_name AS entered_by_name
+    FROM cashbox_adjustments a LEFT JOIN users u ON u.id = a.entered_by
+    ORDER BY adj_date DESC, a.id DESC`);
+  res.json(rows.map((r) => ({ ...r, amount: Number(r.amount) })));
+});
+
+// POST /api/financial/adjustments - seed opening cash / manual correction (+ in box, - out of box)
+router.post('/adjustments', allowRoles('manager'), async (req, res) => {
+  const { amount, adj_date, notes } = req.body || {};
+  const amt = Number(amount);
+  if (amount === undefined || amount === '' || !isFinite(amt) || amt === 0) {
+    return res.status(400).json({ error: 'المبلغ مطلوب ويجب ألا يكون صفراً' });
+  }
+  if (!adj_date) return res.status(400).json({ error: 'التاريخ مطلوب' });
+  const { rows } = await query(
+    `INSERT INTO cashbox_adjustments (amount, adj_date, notes, entered_by)
+     VALUES ($1, $2, $3, $4) RETURNING *`,
+    [amt, adj_date, notes || null, req.user.id]
+  );
+  res.status(201).json({ ...rows[0], amount: Number(rows[0].amount) });
+});
+
+// DELETE /api/financial/adjustments/:id
+router.delete('/adjustments/:id', allowRoles('manager'), async (req, res) => {
+  const id = Number(req.params.id);
+  const { rowCount } = await query('DELETE FROM cashbox_adjustments WHERE id = $1', [id]);
+  if (!rowCount) return res.status(404).json({ error: 'التسوية غير موجودة' });
+  res.status(204).end();
+});
+
+export default router;
