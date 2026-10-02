@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 220 220" width="220" height="220">
+  <defs>
+    <path id="topArc" d="M 30,110 A 80,80 0 0 1 190,110"/>
+    <path id="botArc" d="M 30,110 A 80,80 0 0 0 190,110"/>
+  </defs>
+  <g fill="none" stroke="#0f4d92" stroke-width="5">
+    <circle cx="110" cy="110" r="104"/>
+    <circle cx="110" cy="110" r="92"/>
+  </g>
+  <g fill="#0f4d92" font-family="Arial, Tajawal, sans-serif" text-anchor="middle">
+    <text font-size="17" font-weight="bold" letter-spacing="3">
+      <textPath href="#topArc" startOffset="50%">AGENCE MAURITANIENNE DE SERVICES</textPath>
+    </text>
+    <text font-size="13" font-weight="bold" letter-spacing="5">
+      <textPath href="#botArc" startOffset="50%">A.M.S - SARL</textPath>
+    </text>
+  </g>
+  <g fill="#0f4d92" font-family="Arial, Tajawal, sans-serif" text-anchor="middle">
+    <text x="110" y="116" font-size="22" font-weight="bold">OFFICIEL</text>
+    <text x="110" y="140" font-size="12" font-weight="bold">NIF 01435221</text>
+    <text x="110" y="158" font-size="12" font-weight="bold">RC 16487/23</text>
+    <text x="110" y="176" font-size="11" font-weight="bold">Agrément N°101/DGD/1996</text>
+    <path d="M 70,118 L 150,118" stroke="#0f4d92" stroke-width="2" fill="none"/>
+  </g>
+</svg>

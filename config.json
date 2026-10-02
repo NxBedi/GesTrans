@@ -1,0 +1,36 @@
+{
+  "office": {
+    "code": "MR021",
+    "name": "Nouakchott port"
+  },
+  "declaration_type": "IM",
+  "procedure_code": "4",
+  "place_of_declaration": "25333",
+  "declarant": {
+    "code": "000104",
+    "name": "TRASSA \nNKTT",
+    "representative": "000104/1"
+  },
+  "destination": {
+    "code": "MR",
+    "name": "Mauritanie"
+  },
+  "mode_of_payment": "COMPTANT",
+  "default_incoterm": "CFR",
+  "extended_customs_procedure": "4000",
+  "national_customs_procedure": "000",
+  "default_currency": "MRU",
+  "taxes": [
+    { "code": "DD",  "rate": 20.0,  "base": "CIF" },
+    { "code": "RS",  "rate": 1.0,   "base": "CIF" },
+    { "code": "PSC", "rate": 1.0,   "base": "CIF" },
+    { "code": "PC",  "rate": 0.5,   "base": "CIF" },
+    { "code": "IMF", "rate": 2.0,   "base": "CIF+DD" },
+    { "code": "TVA", "rate": 16.0,  "base": "CIF+DD+RS+PSC+PC+IMF" }
+  ],
+  "attached_documents": [
+    { "code": "705", "name": "Connaissement",      "reference": "bl_number",  "date": "shipment_date" },
+    { "code": "380", "name": "Facture commerciale", "reference": "",          "date": "" },
+    { "code": "271", "name": "Liste de colisage",   "reference": "",          "date": "" }
+  ]
+}
