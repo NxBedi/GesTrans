@@ -187,8 +187,7 @@ export default function Debts() {
       { key: 'old_debts', header: 'دين قديم' },
       { key: 'total_paid', header: 'المدفوع' },
       { key: 'balance', header: 'المتبقي' },
-      { key: 'last_payment_date', header: 'آخر دفعة' },
-      { key: 'due_date', header: 'تاريخ الاستحقاق' },
+
       { key: 'debt_status', header: 'الحالة' },
     ], filtered.map((r) => ({
       ...r,
@@ -196,8 +195,7 @@ export default function Debts() {
       old_debts: money(r.old_debts),
       total_paid: money(r.total_paid),
       balance: money(r.balance),
-      last_payment_date: dmy(r.last_payment_date),
-      due_date: dmy(r.due_date),
+
       debt_status: DEBT_LABELS[r.debt_status] || r.debt_status,
     })));
   };
