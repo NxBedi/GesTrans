@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+﻿import { useEffect, useState } from 'react';
 import { reportsApi, generalExpensesApi } from '../utils/api.js';
 import { fmt } from './Dashboard.jsx';
 import { dmy, DEBT_LABELS } from '../utils/format.js';
@@ -171,7 +171,6 @@ function ContainersReport() {
       { key: 'container_number', header: 'الحاوية' },
       { key: 'customer_name', header: 'العميل' },
       { key: 'registration_date', header: 'التاريخ' },
-      { key: 'status', header: 'الحالة' },
       { key: 'total_costs', header: 'التكاليف' },
       { key: 'final_price', header: 'السعر' },
     ];
@@ -436,14 +435,11 @@ function DebtsReport() {
       { key: 'total_billed', header: 'المُحاسَب' },
       { key: 'total_paid', header: 'المدفوع' },
       { key: 'balance', header: 'المتبقي' },
-      { key: 'last_payment_date', header: 'آخر دفعة' },
-      { key: 'due_date', header: 'الاستحقاق' },
       { key: 'debt_status', header: 'الحالة' },
     ];
     const data = rows.map((r) => ({
       ...r,
       total_billed: fmt(r.total_billed), total_paid: fmt(r.total_paid), balance: fmt(r.balance),
-      last_payment_date: dmy(r.last_payment_date), due_date: dmy(r.due_date),
       debt_status: DEBT_LABELS[r.debt_status] || r.debt_status,
     }));
     const sub = `إجمالي الديون: ${fmt(totalDebt)} MRU — متأخر: ${fmt(overdueAmt)} MRU عن ${overdue.length} عميل`;
@@ -487,8 +483,6 @@ function DebtsReport() {
                 <td className="nowrap">{fmt(r.total_billed)}</td>
                 <td className="nowrap" style={{ color: '#16a34a' }}>{fmt(r.total_paid)}</td>
                 <td className="nowrap" style={{ fontWeight: 800, color: Number(r.balance) > 0 ? '#d97706' : '#16a34a' }}>{fmt(r.balance)}</td>
-                <td className="nowrap">{dmy(r.last_payment_date)}</td>
-                <td className="nowrap">{dmy(r.due_date)}</td>
                 <td><span className={`badge ${r.debt_status === 'paid' ? 'badge-paid' : r.debt_status === 'partial' ? 'badge-partial' : r.debt_status === 'overdue' ? 'badge-overdue' : 'badge-due'}`}>{DEBT_LABELS[r.debt_status] || r.debt_status}</span></td>
               </tr>
             ))}
@@ -498,3 +492,10 @@ function DebtsReport() {
     </div>
   );
 }
+
+
+
+
+
+
+
