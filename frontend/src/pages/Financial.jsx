@@ -188,15 +188,14 @@ export default function Financial() {
           <div className="stat-label">نقدية الصندوق (محصلة الحركات)</div>
           <div className="muted" style={{ marginTop: 4, fontSize: 12 }}>كل ما دخل − كل ما خرج فعلاً من الصندوق</div>
         </div>
-        <div className="card stat-card">
+        {/* Remove operational cash result as requested */}
+        {/* <div className="card stat-card">
           <div className="stat-value" style={{ color: Number(overview?.operational_cash_result) >= 0 ? '#2563eb' : '#dc2626' }}>{fmt(overview?.operational_cash_result)}</div>
           <div className="stat-label">النتيجة التشغيلية محققة نقداً</div>
-          <div className="muted" style={{ marginTop: 4, fontSize: 12 }}>نقدية الصندوق − رأس المال المستثمر</div>
         </div>
-        <div className="card stat-card">
-          <div className="stat-value" style={{ color: '#f59e0b' }}>{fmt(overview?.old_debts)}</div>
-          <div className="stat-label">الدين القديم في حسابات الزبائن</div>
-          <div className="muted" style={{ marginTop: 4, fontSize: 12 }}>رصيد سابق ضمن رصيد كل زبون — يُسدد بالإيداع مثل بقية الحسابات</div>
+          <div className="stat-value" style={{ color: '#f59e0b' }}>{fmt((Number(overview?.old_debts)||0) + (Number(overview?.customer_debt)||0))}</div>
+          <div className="stat-label">الديون (إجمالي)</div>
+          <div className="muted" style={{ marginTop: 4, fontSize: 12 }}>يُدمج الديون القديمة ضمن إجمالي الديون</div>
         </div>
       </div>
       <div className="grid grid-4" style={{ marginBottom: 16 }}>

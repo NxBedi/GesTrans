@@ -142,7 +142,6 @@ export default function AccountStatement({ customerId, customerName, onClose }) 
                     <td className="nowrap">{e.date}</td>
                     <td>
                       {e.description}
-                      {e.kind === 'old_debt' && <span className="badge badge-due" style={{ marginInlineStart: 8 }}>Old Debt</span>}
                       {e.reference && <div className="muted" style={{ fontSize: 12 }}>{e.reference}</div>}
                     </td>
                     <td className="nowrap">{e.debit != null ? <b>{fmt(e.debit)}</b> : '—'}</td>
