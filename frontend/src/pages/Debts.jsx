@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { reportsApi, customersApi } from '../utils/api.js';
+import { refreshDashboard } from '../utils/refresh.js';
 import { fmt, money, dmy, DEBT_LABELS, DEBT_BADGE } from '../utils/format.js';
 import { exportExcel } from '../utils/export.js';
 import { useFeedback } from '../components/Feedback.jsx';
@@ -99,6 +100,7 @@ export default function Debts() {
       toast(`تم تسجيل دفعة ${fmt(amt)} لصالح ${showPay.customer_name}`);
       setShowPay(null);
       load();
+      refreshDashboard();
     } catch (err) { setPayErr(err.message); }
     finally { setPaying(false); }
   };
@@ -117,6 +119,7 @@ export default function Debts() {
       toast('تم حذف الدفعة');
       viewHistory(customer);
       load();
+      refreshDashboard();
     } catch (err) { toast(err.message, 'error'); }
   };
 
@@ -127,6 +130,7 @@ export default function Debts() {
       toast('تم تحديث تاريخ الاستحقاق');
       setDueForm(null);
       load();
+      refreshDashboard();
     } catch (err) { toast(err.message, 'error'); }
   };
 
@@ -160,6 +164,7 @@ export default function Debts() {
       toast(`تم تسجيل دين قديم ${fmt(amt)} لصالح ${selectedCustomer.customer_name}`);
       setShowOldDebt(false);
       load();
+      refreshDashboard();
     } catch (err) { setOldErr(err.message); }
     finally { setOldSaving(false); }
   };
@@ -174,6 +179,7 @@ export default function Debts() {
       toast(`تمت إضافة العميل ${r.name}`);
       setShowNew(false);
       load();
+      refreshDashboard();
     } catch (err) { setNewErr(err.message); }
     finally { setSaving(false); }
   };

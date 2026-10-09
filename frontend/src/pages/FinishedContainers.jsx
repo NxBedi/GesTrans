@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { containersApi } from '../utils/api.js';
+import { refreshDashboard } from '../utils/refresh.js';
 import { fmt } from './Dashboard.jsx';
 
 const statusLabels = { registered: 'مسجلة', processing: 'قيد تسجيل الفواتير', closed: 'جاهزة للتسعير', priced: 'تم التسعير' };
@@ -25,6 +26,7 @@ export default function FinishedContainers() {
     try {
       await containersApi.reopen(c.id);
       load();
+      refreshDashboard();
     } catch (err) {
       alert(err.message);
     } finally {

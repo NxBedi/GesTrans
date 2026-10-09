@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { generalExpensesApi } from '../utils/api.js';
+import { refreshDashboard } from '../utils/refresh.js';
 import { fmt } from './Dashboard.jsx';
 
 const SUGGESTED = ['إيجار المقر', 'رواتب الموظفين', 'كهرباء', 'هاتف وانترنت', 'قرطاسية', 'صيانة', 'هدايا وضيافة', 'مصاريف أخرى'];
@@ -59,6 +60,7 @@ export default function GeneralExpenses() {
       setShowForm(false);
       generalExpensesApi.categories().then(setCategories).catch(() => {});
       loadData();
+      refreshDashboard();
     } catch (err) { setMsg(err.message); }
   };
 
@@ -68,6 +70,7 @@ export default function GeneralExpenses() {
       await generalExpensesApi.remove(r.id);
       generalExpensesApi.categories().then(setCategories).catch(() => {});
       loadData();
+      refreshDashboard();
     } catch (err) { alert(err.message); }
   };
 

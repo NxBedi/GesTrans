@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useAuth } from '../contexts/AuthContext.jsx';
 import { containersApi, customersApi, invoiceTypesApi } from '../utils/api.js';
+import { refreshDashboard } from '../utils/refresh.js';
 import { fmt } from './Dashboard.jsx';
 import { useCompany } from '../contexts/CompanyContext.jsx';
 import CompanyLogo from '../components/CompanyLogo.jsx';
@@ -167,21 +168,23 @@ export default function ListeBL() {
       else await containersApi.create(form);
       setShowAdd(false);
       load();
+      refreshDashboard();
     } catch (err) { setMsg(err.message); }
   };
 
   const remove = async (row) => {
     if (!confirm(`Supprimer le BL ${row.bl_number} ?`)) return;
-    try { await containersApi.remove(row.id); load(); } catch (e) { alert(e.message); }
+    try { await containersApi.remove(row.id); load(); refreshDashboard(); } catch (e) { alert(e.message); }
   };
 
   const closeContainer = async (row) => {
     if (!confirm(`Fermer le BL ${row.bl_number} ? (Liquidation) — il passera à la liste "Tubea prêts à être tarifés" (جاهزة للتسعير).`)) return;
-    try { await containersApi.close(row.id); load(); } catch (e) { alert(e.message); }
+    try { await containersApi.close(row.id); load(); refreshDashboard(); } catch (e) { alert(e.message); }
   };
 
   const reloadChg = async () => {
     setChgDetail(await containersApi.get(chgRow.id));
+    refreshDashboard();
   };
 
   const registerLiqInvoice = async () => {

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext.jsx';
 import { reportsApi, containersApi } from '../utils/api.js';
+import { refreshDashboard, onDashboardRefresh } from '../utils/refresh.js';
 import { dmy, STATUS_LABELS, money } from '../utils/format.js';
 
 const pctOf = (cur, prev) => (cur === 0 && prev === 0 ? 0 : prev === 0 ? 100 : Math.round(((cur - prev) / Math.abs(prev)) * 100));
@@ -14,9 +15,19 @@ export default function Dashboard() {
   const [recentPay, setRecentPay] = useState([]);
 
   useEffect(() => {
-    if (isManager) reportsApi.dashboard().then(setDash).catch(() => {});
-    containersApi.list().then((rows) => setRecent(rows.slice(0, 8))).catch(() => {});
-    if (isManager) reportsApi.recentPayments().then((p) => setRecentPay(p.recent || [])).catch(() => {});
+    const fetchAll = () => {
+      if (isManager) reportsApi.dashboard().then(setDash).catch(() => {});
+      containersApi.list({ all: 1 }).then((rows) => setRecent(rows.slice(0, 8))).catch(() => {});
+      if (isManager) reportsApi.recentPayments().then((p) => setRecentPay(p.recent || [])).catch(() => {});
+    };
+    fetchAll();
+    const onFocus = () => fetchAll();
+    window.addEventListener('focus', onFocus);
+    const offRefresh = onDashboardRefresh(fetchAll);
+    return () => {
+      window.removeEventListener('focus', onFocus);
+      offRefresh();
+    };
   }, [user]);
 
   // KPI: cash + flows with previous-period comparison
@@ -36,13 +47,17 @@ export default function Dashboard() {
   const debtKpis = useMemo(() => {
     const d = dash?.debts;
     if (!d) return null;
+    const c = dash?.containers;
+    const ex = dash?.expenses;
     return [
       { ico: '📒', bg: '#fef2f2', lbl: 'إجمالي الديون', val: money(d.total), sub: `${d.debtors} عميل مدين`, link: '/debts', linkTitle: 'فتح قائمة العملاء والديون' },
       { ico: '⏰', bg: '#fff7ed', lbl: 'ديون متأخرة', val: money(d.overdue_amount), sub: `${d.overdue_count} حالات متأخرة`, color: '#d97706', link: '/debts', linkTitle: 'فتح قائمة العملاء والديون' },
-      { ico: '📦', bg: '#eff6ff', lbl: 'حاويات جارية', val: d.containers?.present || 0, sub: 'مسجلة + قيد تسجيل الفواتير', link: '/containers', linkTitle: 'فتح قائمة الحاويات' },
-      { ico: '🔒', bg: '#f0fdf4', lbl: 'جاهزة للتسعير', val: d.containers?.in_transit || 0, sub: 'حاويات مغلقة (LIQUIDATION)', link: '/pricing-queue', linkTitle: 'فتح قائمة جاهزة للتسعير' },
-      { ico: '✅', bg: '#f5f3ff', lbl: 'حاويات مسعّرة', val: d.containers?.received || 0, sub: 'تم التسعير وإحالتها للحسابات', link: '/finished', linkTitle: 'فتح قائمة إنهاء الحسابات' },
-      { ico: '🧾', bg: '#f0f9ff', lbl: 'أرباح الحاويات', val: money(d.profit_total), sub: `محاسَب ${money(d.billed_total)}`, link: '/finished', linkTitle: 'فتح قائمة إنهاء الحسابات' },
+      { ico: '📉', bg: '#fef2f2', lbl: 'المصاريف الاجمالية', val: money(dash?.total_expenses ?? ex?.total), sub: `مصاريف المؤسسة + رواتب العمال`, linkTitle: `مصاريف المؤسسة ${money(ex?.institution)} + رواتب العمال ${money(ex?.salaries)}` },
+      { ico: '📦', bg: '#eff6ff', lbl: 'حاويات جارية', val: c?.present || 0, sub: 'مسجلة + قيد تسجيل الفواتير', link: '/containers', linkTitle: 'فتح قائمة الحاويات' },
+      { ico: '🔒', bg: '#f0fdf4', lbl: 'جاهزة للتسعير', val: c?.in_transit || 0, sub: 'حاويات مغلقة (LIQUIDATION)', link: '/pricing-queue', linkTitle: 'فتح قائمة جاهزة للتسعير' },
+      { ico: '✅', bg: '#f5f3ff', lbl: 'حاويات مسعّرة', val: c?.received || 0, sub: 'تم التسعير وإحالتها للحسابات', link: '/finished', linkTitle: 'فتح قائمة إنهاء الحسابات' },
+      { ico: '🏁', bg: '#e0f2fe', lbl: 'حاويات مُصفّاة', val: c?.liquidated ?? ((c?.closed || 0) + (c?.priced || 0)), sub: 'مغلقة + مسعّرة', link: '/containers', linkTitle: 'فتح قائمة الحاويات' },
+      { ico: '🧾', bg: '#f0f9ff', lbl: 'أرباح الحاويات', val: money(dash?.container_profit ?? dash?.container_profits ?? dash?.profit_total), sub: `محاسَب ${money(dash?.billed_total)}`, link: '/finished', linkTitle: 'فتح قائمة إنهاء الحسابات' },
     ];
   }, [dash]);
 
@@ -149,7 +164,7 @@ function KpiCard({ k }) {
       {content}
     </Link>
   ) : (
-    <div className="kpi-card">{content}</div>
+    <div className="kpi-card" title={k.linkTitle || undefined}>{content}</div>
   );
 }
 

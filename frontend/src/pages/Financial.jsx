@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { financialApi } from '../utils/api.js';
+import { refreshDashboard } from '../utils/refresh.js';
 import { fmt } from './Dashboard.jsx';
 import RegisterPanel from '../components/RegisterPanel.jsx';
 
@@ -53,6 +54,7 @@ export default function Financial() {
       setShowCapitalForm(false);
       setCapitalForm({ amount: '', kind: 'deposit', source: '', txn_date: today(), notes: '' });
       load();
+      refreshDashboard();
     } catch (err) { setMsg(err.message); }
   };
 
@@ -66,17 +68,18 @@ export default function Financial() {
       setShowAdjForm(false);
       setAdjForm({ amount: '', kind: 'in', adj_date: today(), notes: '' });
       load();
+      refreshDashboard();
     } catch (err) { setMsg(err.message); }
   };
 
   const removeCapital = async (r) => {
     if (!confirm(`حذف عملية رأس المال بمبلغ ${fmt(r.amount)}؟`)) return;
-    try { await financialApi.removeCapital(r.id); load(); } catch (err) { alert(err.message); }
+    try { await financialApi.removeCapital(r.id); load(); refreshDashboard(); } catch (err) { alert(err.message); }
   };
 
   const removeAdj = async (r) => {
     if (!confirm(`حذف تسوية الصندوق بمبلغ ${fmt(r.amount)}؟`)) return;
-    try { await financialApi.removeAdjustment(r.id); load(); } catch (err) { alert(err.message); }
+    try { await financialApi.removeAdjustment(r.id); load(); refreshDashboard(); } catch (err) { alert(err.message); }
   };
 
   // Monthly box report derived from ALL movements (unfiltered) so the running balance is correct
@@ -188,11 +191,7 @@ export default function Financial() {
           <div className="stat-label">نقدية الصندوق (محصلة الحركات)</div>
           <div className="muted" style={{ marginTop: 4, fontSize: 12 }}>كل ما دخل − كل ما خرج فعلاً من الصندوق</div>
         </div>
-        {/* Remove operational cash result as requested */}
-        {/* <div className="card stat-card">
-          <div className="stat-value" style={{ color: Number(overview?.operational_cash_result) >= 0 ? '#2563eb' : '#dc2626' }}>{fmt(overview?.operational_cash_result)}</div>
-          <div className="stat-label">النتيجة التشغيلية محققة نقداً</div>
-        </div>
+        <div className="card stat-card">
           <div className="stat-value" style={{ color: '#f59e0b' }}>{fmt((Number(overview?.old_debts)||0) + (Number(overview?.customer_debt)||0))}</div>
           <div className="stat-label">الديون (إجمالي)</div>
           <div className="muted" style={{ marginTop: 4, fontSize: 12 }}>يُدمج الديون القديمة ضمن إجمالي الديون</div>

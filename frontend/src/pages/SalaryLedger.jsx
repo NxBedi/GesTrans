@@ -1,5 +1,6 @@
 import { Fragment, useEffect, useState } from 'react';
 import { salaryApi } from '../utils/api.js';
+import { refreshDashboard } from '../utils/refresh.js';
 import { fmt } from './Dashboard.jsx';
 import { useCompany } from '../contexts/CompanyContext.jsx';
 import CompanyLogo from '../components/CompanyLogo.jsx';
@@ -105,6 +106,7 @@ export default function SalaryLedger() {
   const afterChange = () => {
     loadEmployees();
     if (selected) loadDetail(selected.id);
+    refreshDashboard();
   };
 
   const openAdvance = (emp, e) => {

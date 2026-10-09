@@ -44,11 +44,13 @@ export function getContainerTotals(invoices) {
 
 // GET /api/containers - work queue: registered & in-progress containers (قائمة Liste BL / الحاويات الجارية)
 router.get('/', async (req, res) => {
-  const { q, customer_id } = req.query;
+  const { q, customer_id, all } = req.query;
   const where = [];
   const params = [];
-  params.push('registered', 'processing');
-  where.push(`c.status IN ($${params.length - 1}, $${params.length})`);
+  if (all !== '1' && all !== 'true') {
+    params.push('registered', 'processing');
+    where.push(`c.status IN ($${params.length - 1}, $${params.length})`);
+  }
   if (q) {
     params.push(`%${q}%`);
     where.push(`(c.bl_number ILIKE $${params.length} OR c.container_number ILIKE $${params.length} OR cu.name ILIKE $${params.length} OR c.contents ILIKE $${params.length})`);

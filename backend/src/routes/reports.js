@@ -170,7 +170,7 @@ router.get('/payments', allowRoles('manager'), async (req, res) => {
 // GET /api/reports/dashboard - KPI bundle for the home page (cash, flows, debts, containers)
 router.get('/dashboard', allowRoles('manager'), async (req, res) => {
   const today = new Date().toISOString().slice(0, 10);
-  const [cashBox, debts, todayFlows, prevFlows, containerCounts, pricing] = await Promise.all([
+  const [cashBox, debts, todayFlows, prevFlows, containerCounts, pricing, expenseTotals] = await Promise.all([
     query(`
       SELECT (COALESCE((SELECT SUM(amount) FROM capital_transactions),0)
             + COALESCE((SELECT SUM(amount) FROM cashbox_adjustments),0)
@@ -215,6 +215,12 @@ router.get('/dashboard', allowRoles('manager'), async (req, res) => {
       FROM containers GROUP BY status
     `),
     query(`SELECT COALESCE(SUM(final_price),0)::numeric AS billed, COALESCE(SUM(profit),0)::numeric AS profit FROM pricing`),
+    query(`
+      SELECT (COALESCE((SELECT SUM(g.amount) FROM general_expenses g),0)
+             + COALESCE((SELECT SUM(-s.amount) FROM salary_transactions s),0))::numeric AS total,
+             COALESCE((SELECT SUM(g.amount) FROM general_expenses g),0)::numeric AS institution,
+             COALESCE((SELECT SUM(-s.amount) FROM salary_transactions s),0)::numeric AS salaries
+    `),
   ]);
 
   const cashTotal = Number(cashBox.rows[0].total);
@@ -246,8 +252,21 @@ router.get('/dashboard', allowRoles('manager'), async (req, res) => {
 
   const pct = (cur, prev) => (cur === 0 && prev === 0 ? 0 : prev === 0 ? 100 : Math.round(((cur - prev) / Math.abs(prev)) * 100));
 
+  const closedCount = byStatus.closed || 0;
+  const pricedCount = byStatus.priced || 0;
+  const liquidatedCount = closedCount + pricedCount;
+
+  const institutionExpenses = Number(expenseTotals.rows[0].institution);
+  const paidSalaries = Number(expenseTotals.rows[0].salaries);
+
   res.json({
     cash_in_hand: cashTotal,
+    total_expenses: institutionExpenses + paidSalaries,
+    expenses: {
+      total: institutionExpenses + paidSalaries,
+      institution: institutionExpenses,
+      salaries: paidSalaries,
+    },
     today: { income: todayIncome, expense: todayExpense, net: todayIncome - todayExpense },
     yesterday: { income: prevIncome, expense: prevExpense },
     income_change_pct: pct(todayIncome, prevIncome),
@@ -264,9 +283,14 @@ router.get('/dashboard', allowRoles('manager'), async (req, res) => {
       in_transit: byStatus.closed || 0,
       received: byStatus.priced || 0,
       by_status: byStatus,
+      closed: closedCount,
+      priced: pricedCount,
+      liquidated: liquidatedCount,
     },
     billed_total: Number(pricing.rows[0].billed),
     profit_total: Number(pricing.rows[0].profit),
+    container_profits: Number(pricing.rows[0].profit),
+    container_profit: Number(pricing.rows[0].profit),
   });
 });
 

@@ -3,6 +3,7 @@ import { useAuth } from '../contexts/AuthContext.jsx';
 import { customersApi } from '../utils/api.js';
 import AccountStatement from '../components/AccountStatement.jsx';
 import { fmt } from './Dashboard.jsx';
+import { refreshDashboard } from '../utils/refresh.js';
 
 export default function Customers() {
   const { user } = useAuth();
@@ -28,12 +29,13 @@ export default function Customers() {
       else await customersApi.create(form);
       setShowForm(false);
       load();
+      refreshDashboard();
     } catch (err) { setMsg(err.message); }
   };
 
   const remove = async (c) => {
     if (!confirm(`حذف الزبون ${c.name}؟ سيتم حذف بياناته المرتبطة.`)) return;
-    try { await customersApi.remove(c.id); load(); } catch (err) { alert(err.message); }
+    try { await customersApi.remove(c.id); load(); refreshDashboard(); } catch (err) { alert(err.message); }
   };
 
   if (!isManager) {

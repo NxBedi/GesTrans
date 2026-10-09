@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { containersApi } from '../utils/api.js';
+import { refreshDashboard } from '../utils/refresh.js';
 import { fmt } from './Dashboard.jsx';
 
 export default function PricingQueue() {
@@ -32,6 +33,7 @@ export default function PricingQueue() {
       await containersApi.setPricing(c.id, { final_price: price, notes });
       setOpenId(null);
       load();
+      refreshDashboard();
     } catch (err) {
       setMsg({ [c.id]: err.message });
     } finally {
