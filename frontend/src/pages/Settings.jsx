@@ -156,7 +156,7 @@ export default function Settings() {
 
   const stat = [
     { l: 'اسم المستخدم', v: user?.full_name || '—' },
-    { l: 'الدور', v: user?.role === 'manager' ? 'مدير' : 'موظف' },
+    { l: 'الدور', v: user?.role === 'manager' ? 'مدير' : user?.role === 'accountant' ? 'محاسب' : 'موظف' },
     { l: 'إجمالي الحاويات', v: 'محمّل من لوحة التحكم' },
   ];
 

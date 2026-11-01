@@ -1,27 +1,35 @@
 import { Router } from 'express';
 import { query } from '../db.js';
 import { authRequired } from '../middleware/auth.js';
+import { accessCondition } from '../containerAccess.js';
 
 const router = Router();
 router.use(authRequired);
 
 // GET /api/my-expenses?date=YYYY-MM-DD[&employee_id=N]
-// Employees see only the invoices they recorded themselves (entered_by = current user).
-// Managers see ALL invoices for the day (with the recorder's name), optionally filtered by employee_id.
+// Employees see only the invoices they recorded themselves (entered_by = current user),
+// and only on containers currently visible to them: revoking access also hides the
+// financial rows tied to that container, so the daily total never leaks hidden data.
+// Managers and accountants see ALL invoices for the day (with the recorder's name),
+// optionally filtered by employee_id.
 router.get('/', async (req, res) => {
   const { date, employee_id } = req.query;
   const day = date && /^\d{4}-\d{2}-\d{2}$/.test(String(date)) ? String(date) : new Date().toISOString().slice(0, 10);
-  const isManager = req.user.role === 'manager';
+  const canViewAll = ['manager', 'accountant'].includes(req.user.role);
 
   const params = [day];
   let employeeCond = '';
-  if (!isManager) {
+  if (!canViewAll) {
     params.push(req.user.id);
     employeeCond = `AND i.entered_by = $${params.length}`;
   } else if (employee_id && /^\d+$/.test(String(employee_id))) {
     params.push(Number(employee_id));
     employeeCond = `AND i.entered_by = $${params.length}`;
   }
+
+  // employees: invoices on hidden containers are excluded from the list and the total
+  const scope = accessCondition(req.user, 'c', params);
+  const accessCond = scope ? `AND ${scope}` : '';
 
   const { rows } = await query(`
     SELECT i.id, i.invoice_number, i.amount, i.entry_date, i.created_at, i.notes,
@@ -35,6 +43,7 @@ router.get('/', async (req, res) => {
     JOIN customers cu ON cu.id = c.customer_id
     WHERE i.entry_date = $1::date
       ${employeeCond}
+      ${accessCond}
     ORDER BY i.created_at DESC, i.id DESC
   `, params);
 

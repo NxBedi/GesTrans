@@ -19,7 +19,7 @@ export default function Login() {
     setLoading(true);
     try {
       const user = await login(username, password);
-      navigate(user.role === 'manager' ? '/reports' : '/containers');
+      navigate(user.role === 'manager' ? '/reports' : user.role === 'accountant' ? '/accountant' : '/containers');
     } catch (err) {
       setError(err.message || 'فشل تسجيل الدخول');
     } finally {

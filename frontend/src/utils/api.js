@@ -93,6 +93,7 @@ export const generalExpensesApi = {
   create: (data) => api('/general-expenses', { method: 'POST', body: JSON.stringify(data) }),
   update: (id, data) => api(`/general-expenses/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
   remove: (id) => api(`/general-expenses/${id}`, { method: 'DELETE' }),
+  reverse: (id, data = {}) => api(`/general-expenses/${id}/reverse`, { method: 'POST', body: JSON.stringify(data) }),
 };
 
 export const financialApi = {
@@ -117,6 +118,13 @@ export const salaryApi = {
   advance: (data) => api('/salary/advance', { method: 'POST', body: JSON.stringify(data) }),
   remainder: (data) => api('/salary/remainder', { method: 'POST', body: JSON.stringify(data) }),
   remove: (id) => api(`/salary/transactions/${id}`, { method: 'DELETE' }),
+  reverse: (id, data = {}) => api(`/salary/transactions/${id}/reverse`, { method: 'POST', body: JSON.stringify(data) }),
+};
+
+export const accountantApi = {
+  dashboard: () => api('/accountant/dashboard'),
+  audit: (params = {}) => api('/accountant/audit' + buildQs(params)),
+  employees: () => api('/accountant/employees'),
 };
 
 export const reportsApi = {

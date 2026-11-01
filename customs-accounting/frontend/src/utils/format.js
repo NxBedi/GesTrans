@@ -1,48 +1,31 @@
-// formatting / label helpers shared across the redesigned pages
+// Formatting / label helpers shared across the pages.
+// All helpers read the active language at call time, so they automatically
+// follow the language switcher (and the language used for printed documents).
+import {
+  fmt,
+  money,
+  dmy,
+  dlong,
+  dtm,
+  t,
+  getLang,
+  getDir,
+  getLocale,
+  statusLabel,
+  debtLabel,
+  kindLabel,
+  roleLabel,
+  companyName,
+} from '../i18n/runtime.js';
 
-export function fmt(n) {
-  return new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 2 }).format(Number(n || 0));
-}
+export { fmt, money, dmy, dlong, dtm, t, getLang, getDir, getLocale, statusLabel, debtLabel, kindLabel, roleLabel, companyName };
 
-export function money(n) {
-  return Number.isFinite(Number(n)) ? `${fmt(n)} MRU` : '—';
-}
-
-export function dmy(iso) {
-  if (iso == null || iso === '') return '—';
-  const s = String(iso).slice(0, 10);
-  const [y, m, dd] = s.split('-');
-  return dd && m && y ? `${dd}/${m}/${y}` : s;
-}
-
-export const STATUS_LABELS = {
-  registered: 'مسجلة',
-  processing: 'قيد تسجيل الفواتير',
-  closed: 'جاهزة للتسعير',
-  priced: 'تم التسعير',
-};
-
-export const DEBT_LABELS = {
-  paid: 'مدفوع',
-  partial: 'جزئي',
-  due: 'مستحق',
-  overdue: 'متأخر',
-};
-
+// badge class names stay language independent
 export const DEBT_BADGE = {
   paid: 'badge-paid',
   partial: 'badge-partial',
   due: 'badge-due',
   overdue: 'badge-overdue',
-};
-
-export const KIND_LABELS = {
-  adjust: 'تسوية الصندوق',
-  capital: 'رأس المال',
-  collection: 'تحصيل من زبون',
-  cost: 'تكاليف حاوية',
-  expense: 'مصروف مؤسسة',
-  salary: 'رواتب الموظفين',
 };
 
 export const KIND_COLORS = {
@@ -53,5 +36,3 @@ export const KIND_COLORS = {
   expense: '#dc2626',
   salary: '#d946ef',
 };
-
-export const ROLE_LABELS = { manager: 'مدير', employee: 'موظف' };

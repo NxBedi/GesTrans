@@ -10,7 +10,7 @@ CREATE TABLE IF NOT EXISTS users (
   username      VARCHAR(50) UNIQUE NOT NULL,
   password_hash VARCHAR(255) NOT NULL,
   full_name     VARCHAR(100) NOT NULL,
-  role          VARCHAR(20) NOT NULL DEFAULT 'employee', -- 'manager' | 'employee'
+  role          VARCHAR(20) NOT NULL DEFAULT 'employee', -- 'manager' | 'accountant' | 'employee'
   salary        NUMERIC(14,2) NOT NULL DEFAULT 0, -- الراتب الشهري الثابت (مرجع أساسي في كشف الحساب)
   is_active     BOOLEAN NOT NULL DEFAULT TRUE,
   created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -152,6 +152,45 @@ CREATE TABLE IF NOT EXISTS general_expenses (
 CREATE INDEX IF NOT EXISTS idx_general_expenses_date ON general_expenses(expense_date);
 CREATE INDEX IF NOT EXISTS idx_general_expenses_category ON general_expenses(category);
 
+-- ---------- accountant features on general expenses ----------
+-- payment_method: 'cash' = نقدي يخصم من الصندوق | 'bank' = حوالة/بنك (لا يلمس الصندوق) | 'credit' = آجل (غير مدفوع)
+ALTER TABLE general_expenses ADD COLUMN IF NOT EXISTS payment_method VARCHAR(20) NOT NULL DEFAULT 'cash';
+-- idempotency_key: مفتاح تفرّد يمنع تسجيل نفس العملية مرتين عند إعادة الإرسال
+ALTER TABLE general_expenses ADD COLUMN IF NOT EXISTS idempotency_key TEXT;
+-- عكس العملية (لا حذف): يبقى السجل محفوظاً مع أثره المحاسبي معكوساً
+ALTER TABLE general_expenses ADD COLUMN IF NOT EXISTS reversed_at TIMESTAMPTZ;
+ALTER TABLE general_expenses ADD COLUMN IF NOT EXISTS reversed_by INT REFERENCES users(id);
+ALTER TABLE general_expenses ADD COLUMN IF NOT EXISTS reversal_note TEXT;
+CREATE UNIQUE INDEX IF NOT EXISTS uq_general_expenses_idem ON general_expenses(idempotency_key) WHERE idempotency_key IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_general_expenses_reversed ON general_expenses(reversed_at);
+
+-- ---------- cash-affecting views (المؤثر في نقدية الصندوق فقط) ----------
+-- نقدية الصندوق = الحركات النقدية غير المعكوسة فقط.
+-- المصاريف والرواتب غير النقدية (بنك/آجل) لا تُخصم من الصندوق إطلاقاً.
+CREATE OR REPLACE VIEW cash_general_expenses AS
+  SELECT * FROM general_expenses
+  WHERE payment_method = 'cash' AND reversed_at IS NULL;
+
+-- ---------- audit log (سجل تدقيق العمليات المالية) ----------
+-- يوثّق من فعل ماذا ومتى لأي سجل مالي (معاملات ذرّية داخل نفس الـ transaction).
+CREATE TABLE IF NOT EXISTS audit_logs (
+  id          SERIAL PRIMARY KEY,
+  actor_id    INT REFERENCES users(id) ON DELETE SET NULL,
+  actor_name  VARCHAR(100),
+  actor_role  VARCHAR(20),
+  action      VARCHAR(60) NOT NULL,      -- create | update | reverse | delete | view
+  entity_type VARCHAR(40) NOT NULL,      -- general_expense | salary_transaction | ...
+  entity_id   VARCHAR(40),
+  details     JSONB,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+-- اسم المستخدم يُحفظ كنسخة ثابتة (snapshot) حتى لا يُفقد سجل التدقيق عند حذف الحساب
+ALTER TABLE audit_logs DROP CONSTRAINT IF EXISTS audit_logs_actor_id_fkey;
+ALTER TABLE audit_logs ADD CONSTRAINT audit_logs_actor_id_fkey FOREIGN KEY (actor_id) REFERENCES users(id) ON DELETE SET NULL;
+CREATE INDEX IF NOT EXISTS idx_audit_logs_created ON audit_logs(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_audit_logs_entity ON audit_logs(entity_type, entity_id);
+CREATE INDEX IF NOT EXISTS idx_audit_logs_actor ON audit_logs(actor_id);
+
 -- ---------- capital transactions (رأس المال: إيداعات وسحوبات المالك) ----------
 -- source: منبع المساهمة (مثال: شريك، قرض مالك، بيع عين…) — رأس المال غير محدود سلفاً؛
 -- تُتتبَّع المساهمات المتعددة حسب المصدر بلا إجمالٍ ثابت.
@@ -195,6 +234,23 @@ CREATE TABLE IF NOT EXISTS salary_transactions (
 );
 ALTER TABLE salary_transactions ADD COLUMN IF NOT EXISTS kind VARCHAR(20) NOT NULL DEFAULT 'advance';
 CREATE INDEX IF NOT EXISTS idx_salary_user_date ON salary_transactions(user_id, txn_date);
+
+-- ---------- accountant features on salary transactions ----------
+-- payment_method: 'cash' = نقدي يخصم من الصندوق | 'bank' = حوالة/بنك | 'credit' = آجل (غير مدفوع)
+ALTER TABLE salary_transactions ADD COLUMN IF NOT EXISTS payment_method VARCHAR(20) NOT NULL DEFAULT 'cash';
+-- idempotency_key: مفتاح تفرّد يمنع تسجيل نفس الحركة مرتين عند إعادة الإرسال
+ALTER TABLE salary_transactions ADD COLUMN IF NOT EXISTS idempotency_key TEXT;
+-- عكس الحركة (لا حذف): يبقى السجل محفوظاً مع أثره المحاسبي معكوساً
+ALTER TABLE salary_transactions ADD COLUMN IF NOT EXISTS reversed_at TIMESTAMPTZ;
+ALTER TABLE salary_transactions ADD COLUMN IF NOT EXISTS reversed_by INT REFERENCES users(id);
+ALTER TABLE salary_transactions ADD COLUMN IF NOT EXISTS reversal_note TEXT;
+CREATE UNIQUE INDEX IF NOT EXISTS uq_salary_transactions_idem ON salary_transactions(idempotency_key) WHERE idempotency_key IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_salary_transactions_reversed ON salary_transactions(reversed_at);
+
+-- الرواتب النقدية غير المعكوسة فقط هي ما يخصم من نقدية الصندوق
+CREATE OR REPLACE VIEW cash_salary_transactions AS
+  SELECT * FROM salary_transactions
+  WHERE amount < 0 AND payment_method = 'cash' AND reversed_at IS NULL;
 
 -- ---------- old debts (ديون قديمة) — يُحتفظ بها داخل حساب كل زبون (customers.opening_balance)
 -- وتُسدَّد بالإيداع مثل بقية الحسابات؛ وعاء الديون القديمة المنفصل أُزيل.

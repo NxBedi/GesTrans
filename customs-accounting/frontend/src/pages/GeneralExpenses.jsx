@@ -1,12 +1,18 @@
 import { useEffect, useState } from 'react';
 import { generalExpensesApi } from '../utils/api.js';
-import { fmt } from './Dashboard.jsx';
-
-const SUGGESTED = ['إيجار المقر', 'رواتب الموظفين', 'كهرباء', 'هاتف وانترنت', 'قرطاسية', 'صيانة', 'هدايا وضيافة', 'مصاريف أخرى'];
+import { refreshDashboard } from '../utils/refresh.js';
+import { useFeedback } from '../components/Feedback.jsx';
+import { useI18n } from '../i18n/I18nContext.jsx';
+import { useAuth } from '../contexts/AuthContext.jsx';
 
 const emptyForm = () => ({ category: '', description: '', amount: '', expense_date: new Date().toISOString().slice(0, 10) });
 
 export default function GeneralExpenses() {
+  const { t, fmt, dmy } = useI18n();
+  const { user } = useAuth();
+  const { toast, confirm } = useFeedback();
+  // Accountants record expenses but cannot edit or delete them afterwards.
+  const canManage = user?.role === 'manager';
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
   const [filterCategory, setFilterCategory] = useState('');
@@ -21,6 +27,17 @@ export default function GeneralExpenses() {
   const [editId, setEditId] = useState(null);
   const [msg, setMsg] = useState('');
   const [rowMsg, setRowMsg] = useState({});
+
+  const suggested = [
+    t('generalExpenses.suggestedRent'),
+    t('generalExpenses.suggestedSalaries'),
+    t('generalExpenses.suggestedElectricity'),
+    t('generalExpenses.suggestedPhone'),
+    t('generalExpenses.suggestedStationery'),
+    t('generalExpenses.suggestedMaintenance'),
+    t('generalExpenses.suggestedGifts'),
+    t('generalExpenses.suggestedOther'),
+  ];
 
   const loadData = () => {
     const params = {
@@ -57,75 +74,79 @@ export default function GeneralExpenses() {
       if (editId) await generalExpensesApi.update(editId, body);
       else await generalExpensesApi.create(body);
       setShowForm(false);
+      toast(t('common.saved'));
       generalExpensesApi.categories().then(setCategories).catch(() => {});
       loadData();
+      refreshDashboard();
     } catch (err) { setMsg(err.message); }
   };
 
   const remove = async (r) => {
-    if (!confirm(`حذف مصروف «${r.category}» بمبلغ ${fmt(r.amount)}؟`)) return;
+    if (!(await confirm(t('generalExpenses.confirmDelete', { category: r.category, amount: fmt(r.amount) }), { danger: true, okLabel: t('common.delete') }))) return;
     try {
       await generalExpensesApi.remove(r.id);
+      toast(t('common.deleted'));
       generalExpensesApi.categories().then(setCategories).catch(() => {});
       loadData();
-    } catch (err) { alert(err.message); }
+      refreshDashboard();
+    } catch (err) { toast(err.message, 'error'); }
   };
 
   return (
     <div className="page">
       <div className="toolbar">
         <div>
-          <h1 className="page-title">مصاريف المؤسسة</h1>
-          <p className="page-sub">المصاريف العامة: الإيجار، الرواتب، وغيرها (منفصلة عن فواتير الحاويات)</p>
+          <h1 className="page-title">{t('generalExpenses.title')}</h1>
+          <p className="page-sub">{t('generalExpenses.subtitle')}</p>
         </div>
-        <button className="btn btn-primary" onClick={openNew}>➕ مصروف جديد</button>
+        <button className="btn btn-primary" onClick={openNew}>➕ {t('generalExpenses.newExpense')}</button>
       </div>
 
       {showForm && (
         <form className="card" onSubmit={save} style={{ marginBottom: 20 }}>
-          <h3 style={{ marginBottom: 16 }}>{editId ? 'تعديل مصروف' : 'مصروف جديد'}</h3>
+          <h3 style={{ marginBottom: 16 }}>{editId ? t('generalExpenses.editExpense') : t('generalExpenses.newExpense')}</h3>
           <div className="grid grid-4">
             <div className="form-row">
-              <label className="form-label">البند / النوع *</label>
-              <input className="input" list="genexp-cats" value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })} placeholder="مثال: إيجار المقر" required />
+              <label className="form-label">{t('generalExpenses.fieldCategory')}</label>
+              <input className="input" list="genexp-cats" value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })} placeholder={t('generalExpenses.categoryPlaceholder')} required />
               <datalist id="genexp-cats">
                 {categories.map((c) => <option key={c} value={c} />)}
-                {SUGGESTED.filter((s) => !categories.includes(s)).map((s) => <option key={s} value={s} />)}
+                {suggested.filter((s) => !categories.includes(s)).map((s) => <option key={s} value={s} />)}
               </datalist>
             </div>
             <div className="form-row">
-              <label className="form-label">المبلغ *</label>
+              <label className="form-label">{t('generalExpenses.fieldAmount')}</label>
               <input className="input" type="number" step="0.01" min="0" value={form.amount} onChange={(e) => setForm({ ...form, amount: e.target.value })} required />
             </div>
             <div className="form-row">
-              <label className="form-label">التاريخ *</label>
+              <label className="form-label">{t('generalExpenses.fieldDate')}</label>
               <input className="input" type="date" value={form.expense_date} onChange={(e) => setForm({ ...form, expense_date: e.target.value })} required />
             </div>
             <div className="form-row">
-              <label className="form-label">التفاصيل</label>
-              <input className="input" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} placeholder="ملاحظات توضيحية" />
+              <label className="form-label">{t('generalExpenses.fieldDetails')}</label>
+              <input className="input" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} placeholder={t('generalExpenses.detailsPlaceholder')} />
             </div>
           </div>
           {msg && <div className="form-error" style={{ marginTop: 0 }}>{msg}</div>}
-          <button className="btn btn-success btn-sm" type="submit">حفظ</button>{' '}
-          <button className="btn btn-outline btn-sm" type="button" onClick={() => setShowForm(false)}>إلغاء</button>
+          <button className="btn btn-success btn-sm" type="submit">{t('common.save')}</button>{' '}
+          <button className="btn btn-outline btn-sm" type="button" onClick={() => setShowForm(false)}>{t('common.cancel')}</button>
         </form>
       )}
 
       {/* Filters */}
       <div className="grid grid-4" style={{ marginBottom: 16 }}>
         <div className="form-row" style={{ marginBottom: 0 }}>
-          <label className="form-label">من تاريخ</label>
+          <label className="form-label">{t('generalExpenses.fieldFrom')}</label>
           <input className="input" type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} />
         </div>
         <div className="form-row" style={{ marginBottom: 0 }}>
-          <label className="form-label">إلى تاريخ</label>
+          <label className="form-label">{t('generalExpenses.fieldTo')}</label>
           <input className="input" type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} />
         </div>
         <div className="form-row" style={{ marginBottom: 0 }}>
-          <label className="form-label">البند</label>
+          <label className="form-label">{t('generalExpenses.fieldCategoryFilter')}</label>
           <select className="select" value={filterCategory} onChange={(e) => setFilterCategory(e.target.value)}>
-            <option value="">الكل</option>
+            <option value="">{t('common.all')}</option>
             {categories.map((c) => <option key={c} value={c}>{c}</option>)}
           </select>
         </div>
@@ -135,30 +156,30 @@ export default function GeneralExpenses() {
       <div className="grid grid-3" style={{ marginBottom: 16 }}>
         <div className="card stat-card">
           <div className="stat-value">{fmt(summary?.total)}</div>
-          <div className="stat-label">إجمالي المصاريف</div>
+          <div className="stat-label">{t('generalExpenses.totalExpenses')}</div>
         </div>
         <div className="card stat-card">
           <div className="stat-value">{summary?.count ?? 0}</div>
-          <div className="stat-label">عدد العمليات</div>
+          <div className="stat-label">{t('generalExpenses.operationsCount')}</div>
         </div>
         <div className="card stat-card">
           <div className="stat-value">{summary?.by_category?.length ?? 0}</div>
-          <div className="stat-label">عدد البنود</div>
+          <div className="stat-label">{t('generalExpenses.categoriesCount')}</div>
         </div>
       </div>
 
       <div className="grid grid-2">
         {/* By category */}
         <div className="card" style={{ padding: 0, overflow: 'auto' }}>
-          <h3 style={{ padding: '16px 20px 0' }}>🏷️ حسب البند</h3>
+          <h3 style={{ padding: '16px 20px 0' }}>{t('generalExpenses.byCategoryTitle')}</h3>
           <div style={{ padding: 12 }}>
             <table className="table">
               <thead>
-                <tr><th>البند</th><th>عدد العمليات</th><th>الإجمالي</th></tr>
+                <tr><th>{t('generalExpenses.colCategory')}</th><th>{t('generalExpenses.colOperations')}</th><th>{t('common.total')}</th></tr>
               </thead>
               <tbody>
                 {(!summary?.by_category || summary.by_category.length === 0) && !loading && (
-                  <tr><td colSpan="3" className="muted" style={{ textAlign: 'center', padding: 20 }}>لا توجد مصاريف</td></tr>
+                  <tr><td colSpan="3" className="muted" style={{ textAlign: 'center', padding: 20 }}>{t('generalExpenses.noExpenses')}</td></tr>
                 )}
                 {summary?.by_category.map((c) => (
                   <tr key={c.category}>
@@ -174,15 +195,15 @@ export default function GeneralExpenses() {
 
         {/* By month */}
         <div className="card" style={{ padding: 0, overflow: 'auto' }}>
-          <h3 style={{ padding: '16px 20px 0' }}>📅 حسب الشهر</h3>
+          <h3 style={{ padding: '16px 20px 0' }}>{t('generalExpenses.byMonthTitle')}</h3>
           <div style={{ padding: 12 }}>
             <table className="table">
               <thead>
-                <tr><th>الشهر</th><th>عدد العمليات</th><th>الإجمالي</th></tr>
+                <tr><th>{t('generalExpenses.colMonth')}</th><th>{t('generalExpenses.colOperations')}</th><th>{t('common.total')}</th></tr>
               </thead>
               <tbody>
                 {(!summary?.by_month || summary.by_month.length === 0) && !loading && (
-                  <tr><td colSpan="3" className="muted" style={{ textAlign: 'center', padding: 20 }}>لا توجد بيانات</td></tr>
+                  <tr><td colSpan="3" className="muted" style={{ textAlign: 'center', padding: 20 }}>{t('common.noData')}</td></tr>
                 )}
                 {summary?.by_month.map((m) => (
                   <tr key={m.month}>
@@ -199,39 +220,41 @@ export default function GeneralExpenses() {
 
       {/* Detailed list */}
       <div className="card" style={{ padding: 0, overflow: 'auto', marginTop: 16 }}>
-        <h3 style={{ padding: '16px 20px 0' }}>🧾 سجل المصاريف</h3>
+        <h3 style={{ padding: '16px 20px 0' }}>{t('generalExpenses.logTitle')}</h3>
         <div style={{ padding: 12 }}>
           <table className="table">
             <thead>
               <tr>
-                <th>التاريخ</th><th>البند</th><th>المبلغ</th><th>التفاصيل</th><th>سجلها</th><th></th>
+                <th>{t('common.date')}</th><th>{t('generalExpenses.colCategory')}</th><th>{t('common.amount')}</th><th>{t('generalExpenses.colDetails')}</th><th>{t('generalExpenses.colEnteredBy')}</th>{canManage && <th></th>}
               </tr>
             </thead>
             <tbody>
               {rows.length === 0 && !loading && (
-                <tr><td colSpan="6" className="muted" style={{ textAlign: 'center', padding: 20 }}>لا توجد مصاريف مطابقة</td></tr>
+                <tr><td colSpan={canManage ? 6 : 5} className="muted" style={{ textAlign: 'center', padding: 20 }}>{t('generalExpenses.noMatch')}</td></tr>
               )}
               {rows.map((r) => (
                 <tr key={r.id}>
-                  <td className="nowrap">{r.expense_date}</td>
+                  <td className="nowrap">{dmy(r.expense_date)}</td>
                   <td><span className="badge badge-priced">{r.category}</span></td>
                   <td className="nowrap"><b>{fmt(r.amount)}</b></td>
                   <td className="muted">{r.description || '—'}</td>
                   <td>{r.entered_by_name || '—'}</td>
-                  <td className="nowrap">
-                    {rowMsg[r.id] && <span className="form-error" style={{ marginLeft: 10 }}>{rowMsg[r.id]}</span>}
-                    <button className="btn btn-outline btn-sm" onClick={() => openEdit(r)}>تعديل</button>{' '}
-                    <button className="btn btn-danger btn-sm" onClick={() => remove(r)}>حذف</button>
-                  </td>
+                  {canManage && (
+                    <td className="nowrap">
+                      {rowMsg[r.id] && <span className="form-error" style={{ marginInlineStart: 10 }}>{rowMsg[r.id]}</span>}
+                      <button className="btn btn-outline btn-sm" onClick={() => openEdit(r)}>{t('common.edit')}</button>{' '}
+                      <button className="btn btn-danger btn-sm" onClick={() => remove(r)}>{t('common.delete')}</button>
+                    </td>
+                  )}
                 </tr>
               ))}
             </tbody>
             {(summary?.count > 0) && (
               <tfoot>
                 <tr style={{ borderTop: '2px solid #e2e8f0', fontWeight: 800 }}>
-                  <td colSpan="2">الإجمالي</td>
+                  <td colSpan="2">{t('common.total')}</td>
                   <td>{fmt(summary.total)}</td>
-                  <td colSpan="3"></td>
+                  <td colSpan={canManage ? 3 : 2}></td>
                 </tr>
               </tfoot>
             )}

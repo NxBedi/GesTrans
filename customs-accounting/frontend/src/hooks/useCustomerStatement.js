@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { customersApi } from '../utils/api.js';
+import { t } from '../i18n/runtime.js';
 
 // Shared data hook for the account statement (كشف حساب).
 // Both the Customers page and the Debts page use this same logic via
@@ -15,7 +16,7 @@ export function useCustomerStatement(customerId, { from, to, enabled = true } = 
     setError('');
     customersApi.statement(customerId, { from: from || undefined, to: to || undefined })
       .then(setData)
-      .catch((e) => setError(e.message || 'تعذّر تحميل كشف الحساب'))
+      .catch((e) => setError(e.message || t('statement.errorLoad')))
       .finally(() => setLoading(false));
   }, [customerId, from, to, enabled]);
 

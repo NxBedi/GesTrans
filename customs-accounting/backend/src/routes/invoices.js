@@ -1,12 +1,13 @@
 import { Router } from 'express';
 import { query, pool } from '../db.js';
-import { authRequired } from '../middleware/auth.js';
+import { authRequired, allowRoles } from '../middleware/auth.js';
+import { canAccessContainer } from '../containerAccess.js';
 
 const router = Router();
 router.use(authRequired);
 
-// POST /api/containers/:containerId/invoices
-router.post('/:containerId/invoices', async (req, res) => {
+// POST /api/containers/:containerId/invoices - operational entry (employee & manager)
+router.post('/:containerId/invoices', allowRoles('manager', 'employee'), async (req, res) => {
   const containerId = Number(req.params.containerId);
   const { invoice_type_id, invoice_number, amount, entry_date, notes } = req.body || {};
   if (!invoice_type_id || !entry_date) {
@@ -16,6 +17,10 @@ router.post('/:containerId/invoices', async (req, res) => {
   // verify container exists
   const cRes = await query('SELECT id, status FROM containers WHERE id = $1', [containerId]);
   if (!cRes.rows.length) return res.status(404).json({ error: 'الحاوية غير موجودة' });
+  // an employee may only record invoices on containers granted to them
+  if (!(await canAccessContainer(req.user, containerId))) {
+    return res.status(404).json({ error: 'الحاوية غير موجودة' });
+  }
 
   // registered/in-progress containers can receive expenses; closed cannot (manager may still adjust).
   // Once priced, invoices are frozen so the pricing snapshot stays accurate.
@@ -91,6 +96,9 @@ router.get('/:containerId/invoices', async (req, res) => {
   const containerId = Number(req.params.containerId);
   const cRes = await query('SELECT id, status FROM containers WHERE id = $1', [containerId]);
   if (!cRes.rows.length) return res.status(404).json({ error: 'الحاوية غير موجودة' });
+  if (!(await canAccessContainer(req.user, containerId))) {
+    return res.status(404).json({ error: 'الحاوية غير موجودة' });
+  }
   if (req.user.role !== 'manager' && !['registered', 'processing'].includes(cRes.rows[0].status)) {
     return res.status(403).json({ error: 'الحاوية غير متاحة' });
   }

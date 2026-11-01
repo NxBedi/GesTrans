@@ -18,32 +18,61 @@ import GeneralExpenses from './pages/GeneralExpenses.jsx';
 import Financial from './pages/Financial.jsx';
 import SalaryLedger from './pages/SalaryLedger.jsx';
 import Liquidations from './pages/Liquidations.jsx';
+import AccountantDashboard from './pages/AccountantDashboard.jsx';
+import AccountantWages from './pages/AccountantWages.jsx';
+import AccountantExpenses from './pages/AccountantExpenses.jsx';
+import AccountantWorkerExpenses from './pages/AccountantWorkerExpenses.jsx';
+import AccountantInvoices from './pages/AccountantInvoices.jsx';
+import AccountantCashbox from './pages/AccountantCashbox.jsx';
+import AccountantReports from './pages/AccountantReports.jsx';
+import AccountantAudit from './pages/AccountantAudit.jsx';
 
 export default function App() {
   const { user, loading } = useAuth();
 
   if (loading) return <div className="page">جارٍ التحميل...</div>;
 
+  const isManager = user?.role === 'manager';
+  const isAccountant = user?.role === 'accountant';
+
+  // المحاسب لديه وحدته المالية الخاصة ولا يرى وحدات التشغيل
+  const accountantOnly = (element) => (isAccountant ? element : <Navigate to="/" />);
+  const managerOnly = (element) => (isManager ? element : <Navigate to="/" />);
+
   return (
     <Routes>
       <Route path="/login" element={user ? <Navigate to="/" /> : <Login />} />
       <Route element={<Layout />}>
-        <Route index element={user ? <Dashboard /> : <Navigate to="/login" />} />
-        <Route path="/debts" element={user && user.role === 'manager' ? <Debts /> : <Navigate to="/" />} />
-        <Route path="/settings" element={user && user.role === 'manager' ? <Settings /> : <Navigate to="/" />} />
-        <Route path="/containers" element={user ? <ListeBL /> : <Navigate to="/login" />} />
-        <Route path="/liquidations" element={user && user.role === 'manager' ? <Liquidations /> : <Navigate to="/" />} />
-        <Route path="/my-expenses" element={user ? <MyExpenses /> : <Navigate to="/login" />} />
-        <Route path="/pricing-queue" element={user && user.role === 'manager' ? <PricingQueue /> : <Navigate to="/" />} />
-        <Route path="/finished" element={user && user.role === 'manager' ? <FinishedContainers /> : <Navigate to="/" />} />
-        <Route path="/customers" element={user ? <Customers /> : <Navigate to="/login" />} />
-        <Route path="/users" element={user && user.role === 'manager' ? <Users /> : <Navigate to="/" />} />
-        <Route path="/invoice-types" element={user && user.role === 'manager' ? <InvoiceTypes /> : <Navigate to="/" />} />
-        <Route path="/reports" element={user && user.role === 'manager' ? <Reports /> : <Navigate to="/" />} />
-        <Route path="/expenses" element={user && user.role === 'manager' ? <Expenses /> : <Navigate to="/" />} />
-        <Route path="/general-expenses" element={user && user.role === 'manager' ? <GeneralExpenses /> : <Navigate to="/" />} />
-        <Route path="/financial" element={user && user.role === 'manager' ? <Financial /> : <Navigate to="/" />} />
-        <Route path="/salary" element={user && user.role === 'manager' ? <SalaryLedger /> : <Navigate to="/" />} />
+        <Route index element={user ? (isAccountant ? <AccountantDashboard /> : <Dashboard />) : <Navigate to="/login" />} />
+
+        {/* المحاسب — الوحدة المالية */}
+        <Route path="/accountant" element={accountantOnly(<AccountantDashboard />)} />
+        <Route path="/accountant/wages" element={accountantOnly(<AccountantWages />)} />
+        <Route path="/accountant/expenses" element={accountantOnly(<AccountantExpenses />)} />
+        <Route path="/accountant/worker-expenses" element={accountantOnly(<AccountantWorkerExpenses />)} />
+        <Route path="/accountant/invoices" element={accountantOnly(<AccountantInvoices />)} />
+        <Route path="/accountant/cashbox" element={accountantOnly(<AccountantCashbox />)} />
+        <Route path="/accountant/reports" element={accountantOnly(<AccountantReports />)} />
+        <Route path="/accountant/audit" element={accountantOnly(<AccountantAudit />)} />
+
+        {/* المدير — كل الصلاحيات */}
+        <Route path="/debts" element={managerOnly(<Debts />)} />
+        <Route path="/settings" element={managerOnly(<Settings />)} />
+        <Route path="/liquidations" element={managerOnly(<Liquidations />)} />
+        <Route path="/pricing-queue" element={managerOnly(<PricingQueue />)} />
+        <Route path="/finished" element={managerOnly(<FinishedContainers />)} />
+        <Route path="/users" element={managerOnly(<Users />)} />
+        <Route path="/invoice-types" element={managerOnly(<InvoiceTypes />)} />
+        <Route path="/reports" element={managerOnly(<Reports />)} />
+        <Route path="/expenses" element={managerOnly(<Expenses />)} />
+        <Route path="/general-expenses" element={managerOnly(<GeneralExpenses />)} />
+        <Route path="/financial" element={managerOnly(<Financial />)} />
+        <Route path="/salary" element={managerOnly(<SalaryLedger />)} />
+
+        {/* التشغيل — للمدير والعامل */}
+        <Route path="/containers" element={user && !isAccountant ? <ListeBL /> : <Navigate to="/" />} />
+        <Route path="/my-expenses" element={user && !isAccountant ? <MyExpenses /> : <Navigate to="/" />} />
+        <Route path="/customers" element={user && !isAccountant ? <Customers /> : <Navigate to="/" />} />
       </Route>
       <Route path="*" element={<Navigate to="/" />} />
     </Routes>

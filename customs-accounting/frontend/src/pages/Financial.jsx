@@ -1,20 +1,19 @@
 import { useEffect, useState } from 'react';
 import { financialApi } from '../utils/api.js';
-import { fmt } from './Dashboard.jsx';
+import { refreshDashboard } from '../utils/refresh.js';
+import { KIND_COLORS } from '../utils/format.js';
+import { useAuth } from '../contexts/AuthContext.jsx';
+import { useI18n } from '../i18n/I18nContext.jsx';
 import RegisterPanel from '../components/RegisterPanel.jsx';
-
-const kindMeta = {
-  adjust: { label: 'تسوية الصندوق', color: '#64748b' },
-  capital: { label: 'رأس المال', color: '#8b5cf6' },
-  collection: { label: 'تحصيل من زبون', color: '#16a34a' },
-  cost: { label: 'تكاليف حاوية', color: '#2563eb' },
-  expense: { label: 'مصروف مؤسسة', color: '#dc2626' },
-  salary: { label: 'رواتب الموظفين', color: '#d946ef' },
-};
 
 const today = () => new Date().toISOString().slice(0, 10);
 
 export default function Financial() {
+  const { t, fmt, dmy, kindLabel } = useI18n();
+  const { user } = useAuth();
+  // The accountant gets read-only access: owner capital and cash adjustments
+  // stay in the manager's hands, but the box balance and its ledger are visible.
+  const isManager = user?.role === 'manager';
   const [overview, setOverview] = useState(null);
   const [movements, setMovements] = useState([]);
   const [allMovements, setAllMovements] = useState([]);
@@ -47,12 +46,13 @@ export default function Financial() {
     e.preventDefault();
     setMsg('');
     const amount = capitalForm.kind === 'withdrawal' ? -Math.abs(Number(capitalForm.amount)) : Math.abs(Number(capitalForm.amount));
-    if (!amount) { setMsg('أدخل مبلغاً صحيحاً'); return; }
+    if (!amount) { setMsg(t('financial.invalidAmount')); return; }
     try {
       await financialApi.addCapital({ amount, source: capitalForm.source, txn_date: capitalForm.txn_date, notes: capitalForm.notes });
       setShowCapitalForm(false);
       setCapitalForm({ amount: '', kind: 'deposit', source: '', txn_date: today(), notes: '' });
       load();
+      refreshDashboard();
     } catch (err) { setMsg(err.message); }
   };
 
@@ -60,23 +60,24 @@ export default function Financial() {
     e.preventDefault();
     setMsg('');
     const amount = adjForm.kind === 'out' ? -Math.abs(Number(adjForm.amount)) : Math.abs(Number(adjForm.amount));
-    if (!amount) { setMsg('أدخل مبلغاً صحيحاً'); return; }
+    if (!amount) { setMsg(t('financial.invalidAmount')); return; }
     try {
       await financialApi.addAdjustment({ amount, adj_date: adjForm.adj_date, notes: adjForm.notes });
       setShowAdjForm(false);
       setAdjForm({ amount: '', kind: 'in', adj_date: today(), notes: '' });
       load();
+      refreshDashboard();
     } catch (err) { setMsg(err.message); }
   };
 
   const removeCapital = async (r) => {
-    if (!confirm(`حذف عملية رأس المال بمبلغ ${fmt(r.amount)}؟`)) return;
-    try { await financialApi.removeCapital(r.id); load(); } catch (err) { alert(err.message); }
+    if (!confirm(t('financial.confirmDeleteCapital', { amount: fmt(r.amount) }))) return;
+    try { await financialApi.removeCapital(r.id); load(); refreshDashboard(); } catch (err) { alert(err.message); }
   };
 
   const removeAdj = async (r) => {
-    if (!confirm(`حذف تسوية الصندوق بمبلغ ${fmt(r.amount)}؟`)) return;
-    try { await financialApi.removeAdjustment(r.id); load(); } catch (err) { alert(err.message); }
+    if (!confirm(t('financial.confirmDeleteAdj', { amount: fmt(r.amount) }))) return;
+    try { await financialApi.removeAdjustment(r.id); load(); refreshDashboard(); } catch (err) { alert(err.message); }
   };
 
   // Monthly box report derived from ALL movements (unfiltered) so the running balance is correct
@@ -98,142 +99,144 @@ export default function Financial() {
     <div className="page">
       <div className="toolbar">
         <div>
-          <h1 className="page-title">الصندوق ورأس المال</h1>
-          <p className="page-sub">رأس المال المستثمر (متعدد المصادر) منفصل عن نقدية الصندوق وعن النتيجة التشغيلية — الدين القديم محسوب داخل رصيد كل زبون ويُسدد بالإيداع</p>
+          <h1 className="page-title">{t('financial.title')}</h1>
+          <p className="page-sub">{t('financial.subtitle')}</p>
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
-          <button className="btn btn-primary" onClick={() => { setMsg(''); setShowAdjForm((v) => !v); setShowCapitalForm(false); }}>🏦 تسوية نقدية</button>
-          <button className="btn btn-success" onClick={() => { setMsg(''); setShowCapitalForm((v) => !v); setShowAdjForm(false); }}>💰 عملية رأس مال</button>
+          {isManager && (
+            <>
+              <button className="btn btn-primary" onClick={() => { setMsg(''); setShowAdjForm((v) => !v); setShowCapitalForm(false); }}>{t('financial.adjustBtn')}</button>
+              <button className="btn btn-success" onClick={() => { setMsg(''); setShowCapitalForm((v) => !v); setShowAdjForm(false); }}>{t('financial.capitalBtn')}</button>
+            </>
+          )}
         </div>
       </div>
 
-      {showCapitalForm && (
+      {!isManager && (
+        <div className="card" style={{ marginBottom: 16, padding: '10px 16px' }}>
+          <span className="muted" style={{ fontSize: 13 }}>🔒 {t('financial.readOnly')}</span>
+        </div>
+      )}
+
+      {isManager && showCapitalForm && (
         <form className="card" onSubmit={saveCapital} style={{ marginBottom: 20 }}>
-          <h3 style={{ marginBottom: 16 }}>تسجيل عملية رأس مال <span className="muted" style={{ fontWeight: 400 }}>(يُسجَّل كمصدر إيداع/سحب — يُؤثر على نقدية الصندوق)</span></h3>
+          <h3 style={{ marginBottom: 16 }}>{t('financial.capitalFormTitle')} <span className="muted" style={{ fontWeight: 400 }}>{t('financial.capitalFormHint')}</span></h3>
           <div className="grid grid-4">
             <div className="form-row">
-              <label className="form-label">النوع *</label>
+              <label className="form-label">{t('common.type')} *</label>
               <select className="select" value={capitalForm.kind} onChange={(e) => setCapitalForm({ ...capitalForm, kind: e.target.value })}>
-                <option value="deposit">إيداع رأس مال</option>
-                <option value="withdrawal">سحب مالك</option>
+                <option value="deposit">{t('financial.deposit')}</option>
+                <option value="withdrawal">{t('financial.withdrawal')}</option>
               </select>
             </div>
             <div className="form-row">
-              <label className="form-label">المبلغ *</label>
+              <label className="form-label">{t('common.amount')} *</label>
               <input className="input" type="number" step="0.01" min="0" value={capitalForm.amount} onChange={(e) => setCapitalForm({ ...capitalForm, amount: e.target.value })} required />
             </div>
             <div className="form-row">
-              <label className="form-label">المصدر *</label>
-              <input className="input" value={capitalForm.source} onChange={(e) => setCapitalForm({ ...capitalForm, source: e.target.value })} placeholder="مثال: شريك، قرض مالك، بيع عين، رأس المال الافتتاحي" required />
+              <label className="form-label">{t('financial.colSource')} *</label>
+              <input className="input" value={capitalForm.source} onChange={(e) => setCapitalForm({ ...capitalForm, source: e.target.value })} placeholder={t('financial.sourcePlaceholder')} required />
             </div>
             <div className="form-row">
-              <label className="form-label">التاريخ *</label>
+              <label className="form-label">{t('common.date')} *</label>
               <input className="input" type="date" value={capitalForm.txn_date} onChange={(e) => setCapitalForm({ ...capitalForm, txn_date: e.target.value })} required />
             </div>
           </div>
           <div className="grid grid-4">
             <div className="form-row">
-              <label className="form-label">ملاحظات</label>
+              <label className="form-label">{t('common.notes')}</label>
               <input className="input" value={capitalForm.notes} onChange={(e) => setCapitalForm({ ...capitalForm, notes: e.target.value })} />
             </div>
           </div>
           {msg && <div className="form-error" style={{ marginTop: 0 }}>{msg}</div>}
-          <button className="btn btn-success btn-sm" type="submit">حفظ</button>{' '}
-          <button className="btn btn-outline btn-sm" type="button" onClick={() => setShowCapitalForm(false)}>إلغاء</button>
+          <button className="btn btn-success btn-sm" type="submit">{t('common.save')}</button>{' '}
+          <button className="btn btn-outline btn-sm" type="button" onClick={() => setShowCapitalForm(false)}>{t('common.cancel')}</button>
         </form>
       )}
 
-      {showAdjForm && (
+      {isManager && showAdjForm && (
         <form className="card" onSubmit={saveAdj} style={{ marginBottom: 20 }}>
-          <h3 style={{ marginBottom: 16 }}>تسوية نقدية في الصندوق <span className="muted" style={{ fontWeight: 400 }}>(رصيد بداية نقدي، أضافات/مسحوبات يدوية)</span></h3>
+          <h3 style={{ marginBottom: 16 }}>{t('financial.adjFormTitle')} <span className="muted" style={{ fontWeight: 400 }}>{t('financial.adjFormHint')}</span></h3>
           <div className="grid grid-4">
             <div className="form-row">
-              <label className="form-label">النوع *</label>
+              <label className="form-label">{t('common.type')} *</label>
               <select className="select" value={adjForm.kind} onChange={(e) => setAdjForm({ ...adjForm, kind: e.target.value })}>
-                <option value="in">إضافة نقدية للصندوق</option>
-                <option value="out">خصم نقدي من الصندوق</option>
+                <option value="in">{t('financial.cashIn')}</option>
+                <option value="out">{t('financial.cashOut')}</option>
               </select>
             </div>
             <div className="form-row">
-              <label className="form-label">المبلغ *</label>
+              <label className="form-label">{t('common.amount')} *</label>
               <input className="input" type="number" step="0.01" min="0" value={adjForm.amount} onChange={(e) => setAdjForm({ ...adjForm, amount: e.target.value })} required />
             </div>
             <div className="form-row">
-              <label className="form-label">التاريخ *</label>
+              <label className="form-label">{t('common.date')} *</label>
               <input className="input" type="date" value={adjForm.adj_date} onChange={(e) => setAdjForm({ ...adjForm, adj_date: e.target.value })} required />
             </div>
             <div className="form-row">
-              <label className="form-label">ملاحظات</label>
-              <input className="input" value={adjForm.notes} onChange={(e) => setAdjForm({ ...adjForm, notes: e.target.value })} placeholder="مثال: رصيد نقدي في بداية النظام" />
+              <label className="form-label">{t('common.notes')}</label>
+              <input className="input" value={adjForm.notes} onChange={(e) => setAdjForm({ ...adjForm, notes: e.target.value })} placeholder={t('financial.adjNotesPlaceholder')} />
             </div>
           </div>
           {msg && <div className="form-error" style={{ marginTop: 0 }}>{msg}</div>}
-          <button className="btn btn-success btn-sm" type="submit">حفظ</button>{' '}
-          <button className="btn btn-outline btn-sm" type="button" onClick={() => setShowAdjForm(false)}>إلغاء</button>
+          <button className="btn btn-success btn-sm" type="submit">{t('common.save')}</button>{' '}
+          <button className="btn btn-outline btn-sm" type="button" onClick={() => setShowAdjForm(false)}>{t('common.cancel')}</button>
         </form>
       )}
 
       {/* Cash register open/close */}
-      <RegisterPanel />
+      {/* <RegisterPanel /> */}
 
       {/* Summary cards */}
       <div className="grid grid-4" style={{ marginBottom: 8 }}>
         <div className="card stat-card">
           <div className="stat-value" style={{ color: '#8b5cf6' }}>{fmt(overview?.capital_invested)}</div>
-          <div className="stat-label">رأس المال المستثمر (مساهمات المالك)</div>
-          <div className="muted" style={{ marginTop: 4, fontSize: 12 }}>مستقل عن نشاط الصندوق — متعدد المصادر، غير محدود</div>
+          <div className="stat-label">{t('financial.capitalInvested')}</div>
+          <div className="muted" style={{ marginTop: 4, fontSize: 12 }}>{t('financial.capitalInvestedSub')}</div>
         </div>
         <div className="card stat-card">
           <div className="stat-value" style={{ color: Number(overview?.cash_box) >= 0 ? '#16a34a' : '#dc2626' }}>{fmt(overview?.cash_box)}</div>
-          <div className="stat-label">نقدية الصندوق (محصلة الحركات)</div>
-          <div className="muted" style={{ marginTop: 4, fontSize: 12 }}>كل ما دخل − كل ما خرج فعلاً من الصندوق</div>
+          <div className="stat-label">{t('financial.cashBox')}</div>
+          <div className="muted" style={{ marginTop: 4, fontSize: 12 }}>{t('financial.cashBoxSub')}</div>
         </div>
         <div className="card stat-card">
-          <div className="stat-value" style={{ color: Number(overview?.operational_cash_result) >= 0 ? '#2563eb' : '#dc2626' }}>{fmt(overview?.operational_cash_result)}</div>
-          <div className="stat-label">النتيجة التشغيلية محققة نقداً</div>
-          <div className="muted" style={{ marginTop: 4, fontSize: 12 }}>نقدية الصندوق − رأس المال المستثمر</div>
-        </div>
-        <div className="card stat-card">
-          <div className="stat-value" style={{ color: '#f59e0b' }}>{fmt(overview?.old_debts)}</div>
-          <div className="stat-label">الدين القديم في حسابات الزبائن</div>
-          <div className="muted" style={{ marginTop: 4, fontSize: 12 }}>رصيد سابق ضمن رصيد كل زبون — يُسدد بالإيداع مثل بقية الحسابات</div>
+          <div className="stat-value" style={{ color: '#f59e0b' }}>{fmt((Number(overview?.old_debts)||0) + (Number(overview?.customer_debt)||0))}</div>
+          <div className="stat-label">{t('financial.debtsTotal')}</div>
+          <div className="muted" style={{ marginTop: 4, fontSize: 12 }}>{t('financial.debtsTotalSub')}</div>
         </div>
       </div>
       <div className="grid grid-4" style={{ marginBottom: 16 }}>
         <div className="card stat-card">
           <div className="stat-value" style={{ color: Number(overview?.customer_debt) > 0 ? '#dc2626' : Number(overview?.customer_debt) < 0 ? '#f59e0b' : '#16a34a' }}>{fmt(overview?.customer_debt)}</div>
-          <div className="stat-label">{Number(overview?.customer_debt) > 0 ? 'ديون الزبناء (تحصيل قادم)' : Number(overview?.customer_debt) < 0 ? 'فائض الزبناء (دفعات مقدمة)' : 'متوازن (لا ديون ولا سلف)'}</div>
+          <div className="stat-label">{Number(overview?.customer_debt) > 0 ? t('financial.customerDebtPositive') : Number(overview?.customer_debt) < 0 ? t('financial.customerDebtNegative') : t('financial.customerDebtBalanced')}</div>
         </div>
         <div className="card stat-card">
           <div className="stat-value" style={{ color: '#2563eb' }}>{fmt(overview?.total_container_costs)}</div>
-          <div className="stat-label">تكاليف الحاويات المدفوعة</div>
+          <div className="stat-label">{t('financial.containerCosts')}</div>
         </div>
         <div className="card stat-card">
           <div className="stat-value" style={{ color: '#64748b' }}>{fmt(overview?.total_general_expenses)}</div>
-          <div className="stat-label">مصاريف المؤسسة</div>
+          <div className="stat-label">{t('financial.generalExpenses')}</div>
         </div>
         <div className="card stat-card">
           <div className="stat-value" style={{ color: '#d946ef' }}>{fmt(overview?.total_salary_paid)}</div>
-          <div className="stat-label">رواتب الموظفين المدفوعة</div>
+          <div className="stat-label">{t('financial.salariesPaid')}</div>
         </div>
       </div>
 
       {/* Model explanation */}
       <div className="card" style={{ marginBottom: 16 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-          <b>كيف تُحسب هذه الأرقام؟</b>
+          <b>{t('financial.howTitle')}</b>
         </div>
         <p className="muted" style={{ marginTop: 4, fontSize: 13 }}>
-          <b>رأس المال المستثمر</b> = مجموع مساهمات المالك فقط (إيداعات − سحوبات)، يُسجَّل حسب
-          <b> المصدر</b> (شريك، قرض مالك، بيع عين…) — غير محدود سلفاً ولا يعتمد على نشاط الصندوق.
+          <b>{t('financial.howCapitalTerm')}</b>{t('financial.howCapitalText')}
           <br />
-          <b>نقدية الصندوق</b> = كل ما دخل فعلاً − كل ما خرج فعلاً من الصندوق (محصلة حركات، لا رأس مال محدد).
+          <b>{t('financial.howCashTerm')}</b>{t('financial.howCashText')}
           <br />
-          <b>النتيجة التشغيلية</b> = نقدية الصندوق − رأس المال المستثمر (ما أنتجته العمليات نقداً).
+          <b>{t('financial.howOperatingTerm')}</b>{t('financial.howOperatingText')}
           <br />
-          المصاريف والتكاليف والديون والأرباح تُتتبَّع <b>مستقلة</b> عن رأس المال: تكاليف الحاويات تُخصم من
-          الصندوق فقط، والدين القديم لكل زبون محسوب داخل رصيده (opening_balance) ويُسدد بالإيداع مثل بقية الحسابات،
-          وديون الزبناء وأرباح الحاويات محسوبة بشكل منفصل.
+          {t('financial.howTrackersA')} <b>{t('financial.howTrackersBold')}</b>{t('financial.howTrackersB')}
         </p>
       </div>
 
@@ -241,7 +244,7 @@ export default function Financial() {
         {/* Movements ledger */}
         <div className="card" style={{ padding: 0, overflow: 'auto' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px 20px 0', flexWrap: 'wrap', gap: 8 }}>
-            <h3>🧾 حركة الصندوق</h3>
+            <h3>{t('financial.movementsTitle')}</h3>
             <div style={{ display: 'flex', gap: 6 }}>
               <input className="input" type="date" style={{ width: 120 }} value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} />
               <input className="input" type="date" style={{ width: 120 }} value={dateTo} onChange={(e) => setDateTo(e.target.value)} />
@@ -250,18 +253,18 @@ export default function Financial() {
           <div className="table-scroll" style={{ padding: 12 }}>
             <table className="table tbl-movement">
               <thead>
-                <tr><th>التاريخ</th><th>الحركة</th><th>الوصف</th><th>المبلغ</th></tr>
+                <tr><th>{t('common.date')}</th><th>{t('financial.colMovement')}</th><th>{t('common.description')}</th><th>{t('common.amount')}</th></tr>
               </thead>
               <tbody>
                 {movements.length === 0 && !loading && (
-                  <tr><td colSpan="4" className="muted" style={{ textAlign: 'center', padding: 20 }}>لا توجد حركات في هذه الفترة</td></tr>
+                  <tr><td colSpan="4" className="muted" style={{ textAlign: 'center', padding: 20 }}>{t('financial.noMovements')}</td></tr>
                 )}
                 {movements.map((m, i) => {
-                  const meta = kindMeta[m.kind] || { label: m.kind, color: '#64748b' };
+                  const color = KIND_COLORS[m.kind] || '#64748b';
                   return (
                     <tr key={i}>
-                      <td className="nowrap muted">{m.d}</td>
-                      <td><span style={{ background: meta.color + '1a', color: meta.color, fontWeight: 700, padding: '2px 8px', borderRadius: 6 }}>{meta.label}</span></td>
+                      <td className="nowrap muted">{dmy(m.d)}</td>
+                      <td><span style={{ background: color + '1a', color, fontWeight: 700, padding: '2px 8px', borderRadius: 6 }}>{kindLabel(m.kind)}</span></td>
                       <td>{m.descr}{m.ref ? <span className="muted"> — {m.ref}</span> : null}</td>
                       <td className="nowrap" style={{ fontWeight: 700, color: m.amount >= 0 ? '#16a34a' : '#dc2626' }}>
                         {m.amount >= 0 ? '+' : ''}{fmt(m.amount)}
@@ -276,15 +279,15 @@ export default function Financial() {
 
         {/* Monthly box report */}
         <div className="card" style={{ padding: 0, overflow: 'auto' }}>
-          <h3 style={{ padding: '16px 20px 0' }}>📅 تقرير الصندوق الشهري</h3>
+          <h3 style={{ padding: '16px 20px 0' }}>{t('financial.monthlyTitle')}</h3>
           <div className="table-scroll" style={{ padding: 12 }}>
             <table className="table tbl-monthly">
               <thead>
-                <tr><th>الشهر</th><th>دخول (تحصيل)</th><th>خروج</th><th>صافي الشهر</th><th>الرصيد التراكمي</th></tr>
+                <tr><th>{t('financial.colMonth')}</th><th>{t('financial.colIn')}</th><th>{t('financial.colOut')}</th><th>{t('financial.colNetMonth')}</th><th>{t('financial.colRunningBalance')}</th></tr>
               </thead>
               <tbody>
                 {monthRows.length === 0 && (
-                  <tr><td colSpan="5" className="muted" style={{ textAlign: 'center', padding: 20 }}>لا توجد بيانات بعد</td></tr>
+                  <tr><td colSpan="5" className="muted" style={{ textAlign: 'center', padding: 20 }}>{t('financial.noMonthlyData')}</td></tr>
                 )}
                 {monthRows.map((m) => (
                   <tr key={m.month}>
@@ -304,24 +307,24 @@ export default function Financial() {
       <div className="grid grid-2">
         {/* Capital transactions */}
         <div className="card" style={{ padding: 0, overflow: 'auto' }}>
-          <h3 style={{ padding: '16px 20px 0' }}>💼 عمليات رأس المال</h3>
+          <h3 style={{ padding: '16px 20px 0' }}>{t('financial.capitalTitle')}</h3>
           <div className="table-scroll" style={{ padding: 12 }}>
             <table className="table tbl-capital">
               <thead>
-                <tr><th>التاريخ</th><th>النوع</th><th>المصدر</th><th>المبلغ</th><th>ملاحظات</th><th></th></tr>
+                <tr><th>{t('common.date')}</th><th>{t('common.type')}</th><th>{t('financial.colSource')}</th><th>{t('common.amount')}</th><th>{t('common.notes')}</th>{isManager && <th></th>}</tr>
               </thead>
               <tbody>
                 {capitalRows.length === 0 && (
-                  <tr><td colSpan="6" className="muted" style={{ textAlign: 'center', padding: 20 }}>سجّل أول مساهمة رأس مال (من مصدرها) هنا</td></tr>
+                  <tr><td colSpan={isManager ? 6 : 5} className="muted" style={{ textAlign: 'center', padding: 20 }}>{t('financial.noCapital')}</td></tr>
                 )}
                 {capitalRows.map((r) => (
                   <tr key={r.id}>
-                    <td className="nowrap">{r.txn_date}</td>
-                    <td>{r.amount > 0 ? <span className="badge badge-paid">إيداع</span> : <span className="badge badge-processing">سحب</span>}</td>
-                    <td className="nowrap" style={{ fontWeight: 700 }}>{r.source || 'أموال المالك'}</td>
+                    <td className="nowrap">{dmy(r.txn_date)}</td>
+                    <td>{r.amount > 0 ? <span className="badge badge-paid">{t('financial.deposit')}</span> : <span className="badge badge-processing">{t('financial.withdrawal')}</span>}</td>
+                    <td className="nowrap" style={{ fontWeight: 700 }}>{r.source || t('financial.ownerFunds')}</td>
                     <td className="nowrap" style={{ fontWeight: 700, color: r.amount >= 0 ? '#16a34a' : '#dc2626' }}>{r.amount >= 0 ? '+' : ''}{fmt(r.amount)}</td>
                     <td className="muted">{r.notes || '—'}</td>
-                    <td><button className="btn btn-danger btn-sm" onClick={() => removeCapital(r)}>حذف</button></td>
+                    {isManager && <td><button className="btn btn-danger btn-sm" onClick={() => removeCapital(r)}>{t('common.delete')}</button></td>}
                   </tr>
                 ))}
               </tbody>
@@ -331,23 +334,23 @@ export default function Financial() {
 
         {/* Cashbox adjustments */}
         <div className="card" style={{ padding: 0, overflow: 'auto' }}>
-          <h3 style={{ padding: '16px 20px 0' }}>🏦 تسويات الصندوق <span className="muted" style={{ fontWeight: 400, fontSize: 13 }}>(رصيد بداية / تعديل يدوي)</span></h3>
+          <h3 style={{ padding: '16px 20px 0' }}>{t('financial.adjTitle')} <span className="muted" style={{ fontWeight: 400, fontSize: 13 }}>{t('financial.adjSubtitle')}</span></h3>
           <div className="table-scroll" style={{ padding: 12 }}>
             <table className="table tbl-adjustment">
               <thead>
-                <tr><th>التاريخ</th><th>النوع</th><th>المبلغ</th><th>ملاحظات</th><th></th></tr>
+                <tr><th>{t('common.date')}</th><th>{t('common.type')}</th><th>{t('common.amount')}</th><th>{t('common.notes')}</th>{isManager && <th></th>}</tr>
               </thead>
               <tbody>
                 {adjRows.length === 0 && (
-                  <tr><td colSpan="5" className="muted" style={{ textAlign: 'center', padding: 20 }}>سجّل رصيد الصندوق النقدي الفعلي عند البدء هنا</td></tr>
+                  <tr><td colSpan={isManager ? 5 : 4} className="muted" style={{ textAlign: 'center', padding: 20 }}>{t('financial.noAdjustments')}</td></tr>
                 )}
                 {adjRows.map((r) => (
                   <tr key={r.id}>
-                    <td className="nowrap">{r.adj_date}</td>
-                    <td>{r.amount > 0 ? <span className="badge badge-paid">إضافة</span> : <span className="badge badge-processing">خصم</span>}</td>
+                    <td className="nowrap">{dmy(r.adj_date)}</td>
+                    <td>{r.amount > 0 ? <span className="badge badge-paid">{t('financial.addShort')}</span> : <span className="badge badge-processing">{t('financial.deductShort')}</span>}</td>
                     <td className="nowrap" style={{ fontWeight: 700, color: r.amount >= 0 ? '#16a34a' : '#dc2626' }}>{r.amount >= 0 ? '+' : ''}{fmt(r.amount)}</td>
                     <td className="muted">{r.notes || '—'}</td>
-                    <td><button className="btn btn-danger btn-sm" onClick={() => removeAdj(r)}>حذف</button></td>
+                    {isManager && <td><button className="btn btn-danger btn-sm" onClick={() => removeAdj(r)}>{t('common.delete')}</button></td>}
                   </tr>
                 ))}
               </tbody>

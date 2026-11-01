@@ -24,6 +24,7 @@ Layer.prototype.handle_request = function (req, res, next) {
 };
 
 import { runMigrations } from './db.js';
+import i18nMiddleware, { translateText } from './i18n/index.js';
 import authRoutes from './routes/auth.js';
 import userRoutes from './routes/users.js';
 import customerRoutes from './routes/customers.js';
@@ -44,6 +45,7 @@ const app = express();
 app.use(cors({
   origin: process.env.FRONTEND_ORIGIN || 'http://localhost:5173',
 }));
+app.use(i18nMiddleware);
 app.use(express.json({ limit: '8mb' }));
 
 // Express 4 does not catch rejected promises from async route handlers.
@@ -85,7 +87,7 @@ app.use((err, req, res, next) => {
     /invalid input syntax|duplicate key|cannot insert|null value|violates|column|relation|current transaction is aborted/i.test(msg)
       ? 'حدث خطأ داخلي في قاعدة البيانات'
       : (msg || 'خطأ غير متوقع');
-  res.status(500).json({ error: 'خطأ في الخادم: ' + friendly });
+  res.status(500).json({ error: translateText('خطأ في الخادم: ' + friendly, req.lang) });
 });
 
 const PORT = Number(process.env.PORT || 4000);

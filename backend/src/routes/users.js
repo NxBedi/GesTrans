@@ -2,6 +2,7 @@ import { Router } from 'express';
 import bcrypt from 'bcryptjs';
 import { query } from '../db.js';
 import { authRequired, allowRoles } from '../middleware/auth.js';
+import { ROLES } from '../middleware/permissions.js';
 
 const router = Router();
 router.use(authRequired);
@@ -22,7 +23,7 @@ router.post('/', allowRoles('manager'), async (req, res) => {
   if (!username || !password || !full_name || !role) {
     return res.status(400).json({ error: 'جميع الحقول مطلوبة' });
   }
-  if (!['manager', 'employee'].includes(role)) {
+  if (!ROLES.includes(role)) {
     return res.status(400).json({ error: 'دور غير صالح' });
   }
   const salaryNum = salary === undefined || salary === '' ? 0 : Number(salary);
@@ -61,7 +62,7 @@ router.put('/:id', allowRoles('manager'), async (req, res) => {
     sets.push(`salary = ${push(salaryNum)}`);
   }
   if (role !== undefined) {
-    if (!['manager', 'employee'].includes(role)) return res.status(400).json({ error: 'دور غير صالح' });
+    if (!ROLES.includes(role)) return res.status(400).json({ error: 'دور غير صالح' });
     if (id === req.user.id && role !== 'manager') return res.status(400).json({ error: 'لا يمكنك تغيير دور حسابك الخاص' });
     sets.push(`role = ${push(role)}`);
   }
@@ -99,6 +100,24 @@ router.delete('/:id', allowRoles('manager'), async (req, res) => {
     if (Number(managers.rows[0].count) <= 1) {
       return res.status(400).json({ error: 'لا يمكن حذف آخر مدير نشط في النظام' });
     }
+  }
+  // سجلّات مرتبطة بالمستخدم (مصاريف، رواتب، فواتير، حركات صندوق) تمنع الحذف للحفاظ على سلامة السجلات
+  const refs = await query(`
+    SELECT
+      (SELECT COUNT(*)::int FROM general_expenses   WHERE entered_by = $1) AS expenses,
+      (SELECT COUNT(*)::int FROM salary_transactions WHERE created_by = $1) AS salaries,
+      (SELECT COUNT(*)::int FROM salary_transactions WHERE user_id = $1)    AS salary_users,
+      (SELECT COUNT(*)::int FROM invoices            WHERE entered_by = $1) AS invoices,
+      (SELECT COUNT(*)::int FROM capital_transactions WHERE entered_by = $1) AS capital,
+      (SELECT COUNT(*)::int FROM cashbox_adjustments WHERE entered_by = $1) AS adjustments,
+      (SELECT COUNT(*)::int FROM payments            WHERE created_by = $1) AS payments
+  `, [id]);
+  const r = refs.rows[0];
+  const linked = Object.values(r).reduce((s, n) => s + Number(n || 0), 0);
+  if (linked > 0) {
+    return res.status(400).json({
+      error: 'لا يمكن حذف الحساب لوجود سجلات مالية مرتبطة به — يمكنك تعطيل الحساب بدلاً من حذفه',
+    });
   }
   const { rowCount } = await query('DELETE FROM users WHERE id = $1', [id]);
   if (!rowCount) return res.status(404).json({ error: 'المستخدم غير موجود' });

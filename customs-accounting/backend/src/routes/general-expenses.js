@@ -15,8 +15,8 @@ const SELECT = `
   LEFT JOIN users u ON u.id = g.entered_by
 `;
 
-// GET /api/general-expenses - list with filters (manager only: institution finances are private)
-router.get('/', allowRoles('manager'), async (req, res) => {
+// GET /api/general-expenses - list with filters (manager & accountant: institution finances)
+router.get('/', allowRoles('manager', 'accountant'), async (req, res) => {
   const { from, to, category } = req.query;
   const conds = [];
   const params = [];
@@ -30,13 +30,13 @@ router.get('/', allowRoles('manager'), async (req, res) => {
 });
 
 // GET /api/general-expenses/categories - distinct categories (for filter/select)
-router.get('/categories', allowRoles('manager'), async (req, res) => {
+router.get('/categories', allowRoles('manager', 'accountant'), async (req, res) => {
   const { rows } = await query('SELECT DISTINCT category FROM general_expenses ORDER BY category');
   res.json(rows.map((r) => r.category));
 });
 
 // GET /api/general-expenses/summary - totals grouped by category + month
-router.get('/summary', allowRoles('manager'), async (req, res) => {
+router.get('/summary', allowRoles('manager', 'accountant'), async (req, res) => {
   const { from, to, category } = req.query;
   const conds = [];
   const params = [];
@@ -66,8 +66,8 @@ router.get('/summary', allowRoles('manager'), async (req, res) => {
   res.json({ by_category: byCategory.rows, by_month: byMonth.rows, total, count: byCategory.rows.reduce((s, r) => s + r.count, 0) });
 });
 
-// POST /api/general-expenses - manager only
-router.post('/', allowRoles('manager'), async (req, res) => {
+// POST /api/general-expenses - manager & accountant (recording only; edit/delete stay with the manager)
+router.post('/', allowRoles('manager', 'accountant'), async (req, res) => {
   const { category, description, amount, expense_date } = req.body || {};
   if (!category || typeof category !== 'string' || !category.trim()) return res.status(400).json({ error: 'البند مطلوب' });
   const amountNum = Number(amount);

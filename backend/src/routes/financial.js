@@ -1,6 +1,7 @@
-import { Router } from 'express';
+﻿import { Router } from 'express';
 import { query, pool } from '../db.js';
 import { authRequired, allowRoles } from '../middleware/auth.js';
+import { requirePermission, PERM } from '../middleware/permissions.js';
 
 const router = Router();
 router.use(authRequired);
@@ -17,7 +18,7 @@ router.use(authRequired);
  */
 
 // GET /api/financial/register/current - open cash register session (with live expected closing)
-router.get('/register/current', allowRoles('manager'), async (req, res) => {
+router.get('/register/current', requirePermission(PERM.FIN_CASHBOX_VIEW), async (req, res) => {
   const { rows } = await query(`
     SELECT s.*, (s.opened_at::date)::text AS opened_day, u.full_name AS opened_by_name
     FROM cash_register_sessions s LEFT JOIN users u ON u.id = s.opened_by
@@ -33,15 +34,15 @@ router.get('/register/current', allowRoles('manager'), async (req, res) => {
        + COALESCE((SELECT SUM(cap.amount) FROM capital_transactions cap WHERE cap.txn_date >= $1::date),0)
        + COALESCE((SELECT SUM(adj.amount) FROM cashbox_adjustments adj WHERE adj.adj_date >= $1::date),0)
        - COALESCE((SELECT SUM(i.amount) FROM invoices i WHERE i.entry_date >= $1::date),0)
-       - COALESCE((SELECT SUM(g.amount) FROM general_expenses g WHERE g.expense_date >= $1::date),0)
-       - COALESCE((SELECT SUM(-s.amount) FROM salary_transactions s WHERE s.txn_date >= $1::date),0))::numeric AS net
+       - COALESCE((SELECT SUM(g.amount) FROM cash_general_expenses g WHERE g.expense_date >= $1::date),0)
+       - COALESCE((SELECT SUM(-s.amount) FROM cash_salary_transactions s WHERE s.txn_date >= $1::date),0))::numeric AS net
   `, [openedDate]);
   const expected = Number(session.opening_balance) + Number(flows.rows[0].net);
   res.json({ ...session, opening_balance: Number(session.opening_balance), expected_closing: expected, current_net: Number(flows.rows[0].net) });
 });
 
 // POST /api/financial/register/open - open the cash register for the day
-router.post('/register/open', allowRoles('manager'), async (req, res) => {
+router.post('/register/open', requirePermission(PERM.FIN_CASHBOX_MANAGE), async (req, res) => {
   const { opening_balance, notes } = req.body || {};
   const ob = Number(opening_balance);
   if (opening_balance === undefined || opening_balance === '' || !isFinite(ob)) {
@@ -58,7 +59,7 @@ router.post('/register/open', allowRoles('manager'), async (req, res) => {
 });
 
 // POST /api/financial/register/close - close the register, reconcile expected vs actual
-router.post('/register/close', allowRoles('manager'), async (req, res) => {
+router.post('/register/close', requirePermission(PERM.FIN_CASHBOX_MANAGE), async (req, res) => {
   const { actual_closing, notes } = req.body || {};
   const ac = Number(actual_closing);
   if (actual_closing === undefined || actual_closing === '' || !isFinite(ac)) {
@@ -74,8 +75,8 @@ router.post('/register/close', allowRoles('manager'), async (req, res) => {
        + COALESCE((SELECT SUM(cap.amount) FROM capital_transactions cap WHERE cap.txn_date >= $1::date),0)
        + COALESCE((SELECT SUM(adj.amount) FROM cashbox_adjustments adj WHERE adj.adj_date >= $1::date),0)
        - COALESCE((SELECT SUM(i.amount) FROM invoices i WHERE i.entry_date >= $1::date),0)
-       - COALESCE((SELECT SUM(g.amount) FROM general_expenses g WHERE g.expense_date >= $1::date),0)
-       - COALESCE((SELECT SUM(-s.amount) FROM salary_transactions s WHERE s.txn_date >= $1::date),0))::numeric AS net
+       - COALESCE((SELECT SUM(g.amount) FROM cash_general_expenses g WHERE g.expense_date >= $1::date),0)
+       - COALESCE((SELECT SUM(-s.amount) FROM cash_salary_transactions s WHERE s.txn_date >= $1::date),0))::numeric AS net
   `, [openedDate]);
   const expected = Number(session.opening_balance) + Number(flows.rows[0].net);
   const difference = ac - expected;
@@ -89,7 +90,7 @@ router.post('/register/close', allowRoles('manager'), async (req, res) => {
 });
 
 // GET /api/financial/register/history - past closed sessions
-router.get('/register/history', allowRoles('manager'), async (req, res) => {
+router.get('/register/history', requirePermission(PERM.FIN_CASHBOX_VIEW), async (req, res) => {
   const { rows } = await query(`
     SELECT s.*, uo.full_name AS opened_by_name, uc.full_name AS closed_by_name
     FROM cash_register_sessions s
@@ -107,7 +108,7 @@ router.get('/register/history', allowRoles('manager'), async (req, res) => {
 });
 
 // GET /api/financial/overview - summary of capital, cash box, old debts, customer debts
-router.get('/overview', allowRoles('manager'), async (req, res) => {
+router.get('/overview', requirePermission(PERM.FIN_CASHBOX_VIEW), async (req, res) => {
   const [cash, capital, oldDebts, billed, paid, collected, costs, general, adjustments, pricingProfit, salary] = await Promise.all([
     // النقدية الفعلية في الصندوق (محصلة كل الحركات)
     query(`
@@ -115,8 +116,8 @@ router.get('/overview', allowRoles('manager'), async (req, res) => {
             + COALESCE((SELECT SUM(amount) FROM cashbox_adjustments),0)
             + COALESCE((SELECT SUM(amount) FROM payments),0)
             - COALESCE((SELECT SUM(amount) FROM invoices),0)
-            - COALESCE((SELECT SUM(amount) FROM general_expenses),0)
-            + COALESCE((SELECT SUM(amount) FROM salary_transactions WHERE amount < 0),0))::numeric AS total
+            - COALESCE((SELECT SUM(amount) FROM cash_general_expenses),0)
+            + COALESCE((SELECT SUM(amount) FROM cash_salary_transactions),0))::numeric AS total
     `),
     // رأس المال المستثمر = مساهمات المالك فقط (مستقل عن نشاط الصندوق)
     query('SELECT COALESCE(SUM(amount),0)::numeric AS total FROM capital_transactions'),
@@ -133,14 +134,14 @@ router.get('/overview', allowRoles('manager'), async (req, res) => {
     query('SELECT COALESCE(SUM(amount),0)::numeric AS total FROM payments'),
     // تكاليف الحاويات المدفوعة
     query('SELECT COALESCE(SUM(amount),0)::numeric AS total FROM invoices'),
-    // مصاريف المؤسسة
-    query('SELECT COALESCE(SUM(amount),0)::numeric AS total FROM general_expenses'),
+    // مصاريف المؤسسة (غير المعكوسة)
+    query('SELECT COALESCE(SUM(amount),0)::numeric AS total FROM general_expenses WHERE reversed_at IS NULL'),
     // تسويات الصندوق
     query('SELECT COALESCE(SUM(amount),0)::numeric AS total FROM cashbox_adjustments'),
     // أرباح الحاويات = final_price − total_costs
     query('SELECT COALESCE(SUM(profit),0)::numeric AS total FROM pricing'),
     // إجمالي الرواتب المدفوعة نقداً (تُخصم من الصندوق)
-    query('SELECT COALESCE(SUM(-amount),0)::numeric AS total FROM salary_transactions WHERE amount < 0'),
+    query('SELECT COALESCE(SUM(-amount),0)::numeric AS total FROM salary_transactions WHERE amount < 0 AND reversed_at IS NULL'),
   ]);
 
   const cashTotal = Number(cash.rows[0].total);
@@ -181,7 +182,7 @@ router.get('/overview', allowRoles('manager'), async (req, res) => {
 });
 
 // GET /api/financial/movements - unified cash ledger (with optional date filter)
-router.get('/movements', allowRoles('manager'), async (req, res) => {
+router.get('/movements', requirePermission(PERM.FIN_CASHBOX_VIEW), async (req, res) => {
   const { from, to } = req.query;
   const conds = [];
   const params = [];
@@ -215,14 +216,13 @@ router.get('/movements', allowRoles('manager'), async (req, res) => {
       UNION ALL
       SELECT to_char(g.expense_date, 'YYYY-MM-DD'), -g.amount, 'expense'::text AS kind,
              'مصروف مؤسسة: ' || g.category AS descr, g.description AS ref
-        FROM general_expenses g
+        FROM cash_general_expenses g
       UNION ALL
       SELECT to_char(s.txn_date, 'YYYY-MM-DD'), s.amount, 'salary'::text AS kind,
              CASE s.kind WHEN 'advance' THEN 'دفع مقدم من الراتب: ' ELSE 'دفع بقية الراتب: ' END || u.full_name AS descr,
              s.notes AS ref
-        FROM salary_transactions s
+        FROM cash_salary_transactions s
         JOIN users u ON u.id = s.user_id
-       WHERE s.amount < 0
     )
     SELECT d, amount, kind, descr, ref FROM parts ${scope}
     ORDER BY d DESC
@@ -232,7 +232,7 @@ router.get('/movements', allowRoles('manager'), async (req, res) => {
 });
 
 // GET /api/financial/capital - list of capital transactions (deposits/withdrawals per source)
-router.get('/capital/list', allowRoles('manager'), async (req, res) => {
+router.get('/capital/list', requirePermission(PERM.FIN_CASHBOX_VIEW), async (req, res) => {
   const { from, to } = req.query;
   const conds = [];
   const params = [];
@@ -248,7 +248,7 @@ router.get('/capital/list', allowRoles('manager'), async (req, res) => {
 });
 
 // POST /api/financial/capital - record an owner contribution (+) / withdrawal (-), with its source
-router.post('/capital', allowRoles('manager'), async (req, res) => {
+router.post('/capital', requirePermission(PERM.FIN_CASHBOX_MANAGE), async (req, res) => {
   const { amount, txn_date, source, notes } = req.body || {};
   const amt = Number(amount);
   if (amount === undefined || amount === '' || !isFinite(amt) || amt === 0) {
@@ -264,7 +264,7 @@ router.post('/capital', allowRoles('manager'), async (req, res) => {
 });
 
 // DELETE /api/financial/capital/:id
-router.delete('/capital/:id', allowRoles('manager'), async (req, res) => {
+router.delete('/capital/:id', requirePermission(PERM.FIN_CASHBOX_MANAGE), async (req, res) => {
   const id = Number(req.params.id);
   const { rowCount } = await query('DELETE FROM capital_transactions WHERE id = $1', [id]);
   if (!rowCount) return res.status(404).json({ error: 'العملية غير موجودة' });
@@ -272,7 +272,7 @@ router.delete('/capital/:id', allowRoles('manager'), async (req, res) => {
 });
 
 // GET /api/financial/adjustments - list of cashbox manual adjustments
-router.get('/adjustments/list', allowRoles('manager'), async (req, res) => {
+router.get('/adjustments/list', requirePermission(PERM.FIN_CASHBOX_VIEW), async (req, res) => {
   const { rows } = await query(`
     SELECT to_char(a.adj_date, 'YYYY-MM-DD') AS adj_date, a.amount, a.notes, a.id, u.full_name AS entered_by_name
     FROM cashbox_adjustments a LEFT JOIN users u ON u.id = a.entered_by
@@ -281,7 +281,7 @@ router.get('/adjustments/list', allowRoles('manager'), async (req, res) => {
 });
 
 // POST /api/financial/adjustments - seed opening cash / manual correction (+ in box, - out of box)
-router.post('/adjustments', allowRoles('manager'), async (req, res) => {
+router.post('/adjustments', requirePermission(PERM.FIN_CASHBOX_MANAGE), async (req, res) => {
   const { amount, adj_date, notes } = req.body || {};
   const amt = Number(amount);
   if (amount === undefined || amount === '' || !isFinite(amt) || amt === 0) {
@@ -297,7 +297,7 @@ router.post('/adjustments', allowRoles('manager'), async (req, res) => {
 });
 
 // DELETE /api/financial/adjustments/:id
-router.delete('/adjustments/:id', allowRoles('manager'), async (req, res) => {
+router.delete('/adjustments/:id', requirePermission(PERM.FIN_CASHBOX_MANAGE), async (req, res) => {
   const id = Number(req.params.id);
   const { rowCount } = await query('DELETE FROM cashbox_adjustments WHERE id = $1', [id]);
   if (!rowCount) return res.status(404).json({ error: 'التسوية غير موجودة' });

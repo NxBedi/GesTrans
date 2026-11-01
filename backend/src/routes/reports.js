@@ -1,12 +1,13 @@
-import { Router } from 'express';
+﻿import { Router } from 'express';
 import { query } from '../db.js';
 import { authRequired, allowRoles } from '../middleware/auth.js';
+import { requirePermission, PERM } from '../middleware/permissions.js';
 
 const router = Router();
-router.use(authRequired, allowRoles('manager'));
+router.use(authRequired);
 
 // GET /api/reports/profits?from=&to=  - profit per priced container
-router.get('/profits', async (req, res) => {
+router.get('/profits', allowRoles('manager'), async (req, res) => {
   const { from, to } = req.query;
   const params = [];
   let where = '';
@@ -31,7 +32,7 @@ router.get('/profits', async (req, res) => {
 });
 
 // GET /api/reports/summary  - dashboard numbers
-router.get('/summary', async (req, res) => {
+router.get('/summary', allowRoles('manager'), async (req, res) => {
   const containers = await query(`
     SELECT status, COUNT(*)::int AS count FROM containers GROUP BY status
   `);
@@ -51,7 +52,7 @@ router.get('/summary', async (req, res) => {
     SELECT (COALESCE((SELECT SUM(o.opening_balance) FROM customers o),0)
           + COALESCE((SELECT SUM(od.amount) FROM customer_old_debts od),0))::numeric AS total
   `);
-  const generalExpenses = await query('SELECT COALESCE(SUM(amount),0)::numeric AS total FROM general_expenses');
+  const generalExpenses = await query('SELECT COALESCE(SUM(amount),0)::numeric AS total FROM general_expenses WHERE reversed_at IS NULL');
   // إجمالي القيمة المفوترة للزبائن وما دفعوه (صافي مستحقات الزبائن = دين قديم + billed − paid)
   const billedCollected = await query(`
     SELECT (SELECT COALESCE(SUM(final_price),0)::numeric FROM pricing) AS billed,
@@ -65,8 +66,8 @@ router.get('/summary', async (req, res) => {
           + COALESCE((SELECT SUM(amount) FROM cashbox_adjustments),0)
           + COALESCE((SELECT SUM(amount) FROM payments),0)
           - COALESCE((SELECT SUM(amount) FROM invoices),0)
-          - COALESCE((SELECT SUM(amount) FROM general_expenses),0)
-          + COALESCE((SELECT SUM(amount) FROM salary_transactions WHERE amount < 0),0))::numeric AS total
+          - COALESCE((SELECT SUM(amount) FROM cash_general_expenses),0)
+          + COALESCE((SELECT SUM(amount) FROM cash_salary_transactions),0))::numeric AS total
   `);
   res.json({
     containers: Object.fromEntries(containers.rows.map((r) => [r.status, r.count])),
@@ -83,7 +84,7 @@ router.get('/summary', async (req, res) => {
 });
 
 // GET /api/reports/recent-payments - payments summary for the dashboard (today total + last 10)
-router.get('/recent-payments', async (req, res) => {
+router.get('/recent-payments', allowRoles('manager'), async (req, res) => {
   const [todayRow, recentRows] = await Promise.all([
     query(`SELECT COALESCE(SUM(amount),0)::numeric AS total FROM payments WHERE payment_date = CURRENT_DATE`),
     query(`
@@ -102,7 +103,7 @@ router.get('/recent-payments', async (req, res) => {
 });
 
 // GET /api/reports/customer-balances - what each customer owes (old debt + current containers)
-router.get('/customer-balances', async (req, res) => {
+router.get('/customer-balances', allowRoles('manager'), async (req, res) => {
   const { rows } = await query(`
     SELECT cu.id, cu.name AS customer_name, cu.phone, cu.email, cu.due_date, cu.opening_balance,
            COALESCE((SELECT SUM(od.amount) FROM customer_old_debts od WHERE od.customer_id = cu.id), 0)::numeric AS old_debts,
@@ -176,8 +177,8 @@ router.get('/dashboard', allowRoles('manager'), async (req, res) => {
             + COALESCE((SELECT SUM(amount) FROM cashbox_adjustments),0)
             + COALESCE((SELECT SUM(amount) FROM payments),0)
             - COALESCE((SELECT SUM(amount) FROM invoices),0)
-            - COALESCE((SELECT SUM(amount) FROM general_expenses),0)
-            + COALESCE((SELECT SUM(amount) FROM salary_transactions WHERE amount < 0),0))::numeric AS total
+            - COALESCE((SELECT SUM(amount) FROM cash_general_expenses),0)
+            + COALESCE((SELECT SUM(amount) FROM cash_salary_transactions),0))::numeric AS total
     `),
     query(`
       SELECT cu.id,
@@ -194,8 +195,8 @@ router.get('/dashboard', allowRoles('manager'), async (req, res) => {
          + COALESCE((SELECT SUM(cap.amount) FROM capital_transactions cap WHERE cap.txn_date = $1::date AND cap.amount > 0),0)
          + COALESCE((SELECT SUM(adj.amount) FROM cashbox_adjustments adj WHERE adj.adj_date = $1::date AND adj.amount > 0),0))::numeric AS income,
         (COALESCE((SELECT SUM(i.amount) FROM invoices i WHERE i.entry_date = $1::date),0)
-         + COALESCE((SELECT SUM(g.amount) FROM general_expenses g WHERE g.expense_date = $1::date),0)
-         + COALESCE((SELECT SUM(-s.amount) FROM salary_transactions s WHERE s.txn_date = $1::date),0)
+         + COALESCE((SELECT SUM(g.amount) FROM general_expenses g WHERE g.expense_date = $1::date AND g.reversed_at IS NULL),0)
+         + COALESCE((SELECT SUM(-s.amount) FROM salary_transactions s WHERE s.txn_date = $1::date AND s.reversed_at IS NULL),0)
          + COALESCE((SELECT SUM(-cap.amount) FROM capital_transactions cap WHERE cap.txn_date = $1::date AND cap.amount < 0),0)
          + COALESCE((SELECT SUM(-adj.amount) FROM cashbox_adjustments adj WHERE adj.adj_date = $1::date AND adj.amount < 0),0))::numeric AS expense
     `, [today]),
@@ -205,8 +206,8 @@ router.get('/dashboard', allowRoles('manager'), async (req, res) => {
          + COALESCE((SELECT SUM(cap.amount) FROM capital_transactions cap WHERE cap.txn_date = (($1::date) - 1) AND cap.amount > 0),0)
          + COALESCE((SELECT SUM(adj.amount) FROM cashbox_adjustments adj WHERE adj.adj_date = (($1::date) - 1) AND adj.amount > 0),0))::numeric AS income,
         (COALESCE((SELECT SUM(i.amount) FROM invoices i WHERE i.entry_date = (($1::date) - 1)),0)
-         + COALESCE((SELECT SUM(g.amount) FROM general_expenses g WHERE g.expense_date = (($1::date) - 1)),0)
-         + COALESCE((SELECT SUM(-s.amount) FROM salary_transactions s WHERE s.txn_date = (($1::date) - 1)),0)
+         + COALESCE((SELECT SUM(g.amount) FROM general_expenses g WHERE g.expense_date = (($1::date) - 1) AND g.reversed_at IS NULL),0)
+         + COALESCE((SELECT SUM(-s.amount) FROM salary_transactions s WHERE s.txn_date = (($1::date) - 1) AND s.reversed_at IS NULL),0)
          + COALESCE((SELECT SUM(-cap.amount) FROM capital_transactions cap WHERE cap.txn_date = (($1::date) - 1) AND cap.amount < 0),0)
          + COALESCE((SELECT SUM(-adj.amount) FROM cashbox_adjustments adj WHERE adj.adj_date = (($1::date) - 1) AND adj.amount < 0),0))::numeric AS expense
     `, [today]),
@@ -216,10 +217,10 @@ router.get('/dashboard', allowRoles('manager'), async (req, res) => {
     `),
     query(`SELECT COALESCE(SUM(final_price),0)::numeric AS billed, COALESCE(SUM(profit),0)::numeric AS profit FROM pricing`),
     query(`
-      SELECT (COALESCE((SELECT SUM(g.amount) FROM general_expenses g),0)
-             + COALESCE((SELECT SUM(-s.amount) FROM salary_transactions s),0))::numeric AS total,
-             COALESCE((SELECT SUM(g.amount) FROM general_expenses g),0)::numeric AS institution,
-             COALESCE((SELECT SUM(-s.amount) FROM salary_transactions s),0)::numeric AS salaries
+      SELECT (COALESCE((SELECT SUM(g.amount) FROM general_expenses g WHERE g.reversed_at IS NULL),0)
+             + COALESCE((SELECT SUM(-s.amount) FROM salary_transactions s WHERE s.reversed_at IS NULL),0))::numeric AS total,
+             COALESCE((SELECT SUM(g.amount) FROM general_expenses g WHERE g.reversed_at IS NULL),0)::numeric AS institution,
+             COALESCE((SELECT SUM(-s.amount) FROM salary_transactions s WHERE s.reversed_at IS NULL),0)::numeric AS salaries
     `),
   ]);
 
@@ -295,7 +296,7 @@ router.get('/dashboard', allowRoles('manager'), async (req, res) => {
 });
 
 // GET /api/reports/containers?status=&from=&to=
-router.get('/containers', async (req, res) => {
+router.get('/containers', allowRoles('manager'), async (req, res) => {
   const { status, from, to } = req.query;
   const params = [];
   const conds = [];
@@ -327,12 +328,16 @@ function expenseFilter(req) {
   if (to && to !== 'undefined') conds.push(`i.entry_date <= ${push(to)}::date`);
   if (employee_id && employee_id !== 'undefined') conds.push(`i.entered_by = ${push(Number(employee_id))}`);
   if (type_id && type_id !== 'undefined') conds.push(`i.invoice_type_id = ${push(Number(type_id))}`);
-  if (include_manager !== 'true' && include_manager !== '1') conds.push(`t.allowed_role != 'manager'`);
+  // المدير يعتمد فلتر «أنواع المدير» كما كان؛ أما المحاسب فيرى كل الأنواع بما فيها LIQUIDATION
+  const isManager = req.user?.role === 'manager';
+  if (isManager && include_manager !== 'true' && include_manager !== '1') {
+    conds.push(`t.allowed_role != 'manager'`);
+  }
   return { where: conds.length ? `WHERE ${conds.join(' AND ')}` : '', params };
 }
 
-// GET /api/reports/expenses - every expense invoice, trackable, filterable (manager)
-router.get('/expenses', async (req, res) => {
+// GET /api/reports/expenses - every expense invoice, trackable, filterable (manager + accountant)
+router.get('/expenses', requirePermission(PERM.FIN_REPORTS_VIEW), async (req, res) => {
   const { where, params } = expenseFilter(req);
   const { rows } = await query(`
     SELECT i.id, i.invoice_number, i.amount, i.entry_date, i.notes,
@@ -350,8 +355,8 @@ router.get('/expenses', async (req, res) => {
   res.json(rows);
 });
 
-// GET /api/reports/expenses-summary - daily + per-employee aggregation (manager)
-router.get('/expenses-summary', async (req, res) => {
+// GET /api/reports/expenses-summary - daily + per-employee aggregation (manager + accountant)
+router.get('/expenses-summary', requirePermission(PERM.FIN_REPORTS_VIEW), async (req, res) => {
   const { where, params } = expenseFilter(req);
 
   const daily = await query(`
@@ -387,8 +392,8 @@ router.get('/expenses-summary', async (req, res) => {
   });
 });
 
-// GET /api/reports/invoice-types-summary - invoices grouped by type (manager)
-router.get('/invoice-types-summary', async (req, res) => {
+// GET /api/reports/invoice-types-summary - invoices grouped by type (manager + accountant)
+router.get('/invoice-types-summary', requirePermission(PERM.FIN_REPORTS_VIEW), async (req, res) => {
   const { where, params } = expenseFilter(req);
   const { rows } = await query(`
     SELECT t.id AS type_id, t.name AS type_name, t.allowed_role,

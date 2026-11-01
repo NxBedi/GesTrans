@@ -17,7 +17,7 @@ router.use(authRequired);
  */
 
 // GET /api/financial/register/current - open cash register session (with live expected closing)
-router.get('/register/current', allowRoles('manager'), async (req, res) => {
+router.get('/register/current', allowRoles('manager', 'accountant'), async (req, res) => {
   const { rows } = await query(`
     SELECT s.*, (s.opened_at::date)::text AS opened_day, u.full_name AS opened_by_name
     FROM cash_register_sessions s LEFT JOIN users u ON u.id = s.opened_by
@@ -89,7 +89,7 @@ router.post('/register/close', allowRoles('manager'), async (req, res) => {
 });
 
 // GET /api/financial/register/history - past closed sessions
-router.get('/register/history', allowRoles('manager'), async (req, res) => {
+router.get('/register/history', allowRoles('manager', 'accountant'), async (req, res) => {
   const { rows } = await query(`
     SELECT s.*, uo.full_name AS opened_by_name, uc.full_name AS closed_by_name
     FROM cash_register_sessions s
@@ -107,7 +107,7 @@ router.get('/register/history', allowRoles('manager'), async (req, res) => {
 });
 
 // GET /api/financial/overview - summary of capital, cash box, old debts, customer debts
-router.get('/overview', allowRoles('manager'), async (req, res) => {
+router.get('/overview', allowRoles('manager', 'accountant'), async (req, res) => {
   const [cash, capital, oldDebts, billed, paid, collected, costs, general, adjustments, pricingProfit, salary] = await Promise.all([
     // النقدية الفعلية في الصندوق (محصلة كل الحركات)
     query(`
@@ -181,7 +181,7 @@ router.get('/overview', allowRoles('manager'), async (req, res) => {
 });
 
 // GET /api/financial/movements - unified cash ledger (with optional date filter)
-router.get('/movements', allowRoles('manager'), async (req, res) => {
+router.get('/movements', allowRoles('manager', 'accountant'), async (req, res) => {
   const { from, to } = req.query;
   const conds = [];
   const params = [];
@@ -232,7 +232,7 @@ router.get('/movements', allowRoles('manager'), async (req, res) => {
 });
 
 // GET /api/financial/capital - list of capital transactions (deposits/withdrawals per source)
-router.get('/capital/list', allowRoles('manager'), async (req, res) => {
+router.get('/capital/list', allowRoles('manager', 'accountant'), async (req, res) => {
   const { from, to } = req.query;
   const conds = [];
   const params = [];
@@ -272,7 +272,7 @@ router.delete('/capital/:id', allowRoles('manager'), async (req, res) => {
 });
 
 // GET /api/financial/adjustments - list of cashbox manual adjustments
-router.get('/adjustments/list', allowRoles('manager'), async (req, res) => {
+router.get('/adjustments/list', allowRoles('manager', 'accountant'), async (req, res) => {
   const { rows } = await query(`
     SELECT to_char(a.adj_date, 'YYYY-MM-DD') AS adj_date, a.amount, a.notes, a.id, u.full_name AS entered_by_name
     FROM cashbox_adjustments a LEFT JOIN users u ON u.id = a.entered_by

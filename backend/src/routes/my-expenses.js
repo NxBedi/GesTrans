@@ -1,21 +1,23 @@
 import { Router } from 'express';
 import { query } from '../db.js';
 import { authRequired } from '../middleware/auth.js';
+import { hasPermission, PERM } from '../middleware/permissions.js';
 
 const router = Router();
 router.use(authRequired);
 
 // GET /api/my-expenses?date=YYYY-MM-DD[&employee_id=N]
 // Employees see only the invoices they recorded themselves (entered_by = current user).
-// Managers see ALL invoices for the day (with the recorder's name), optionally filtered by employee_id.
+// Managers and accountants see ALL invoices for the day (with the recorder's name),
+// optionally filtered by employee_id.
 router.get('/', async (req, res) => {
   const { date, employee_id } = req.query;
   const day = date && /^\d{4}-\d{2}-\d{2}$/.test(String(date)) ? String(date) : new Date().toISOString().slice(0, 10);
-  const isManager = req.user.role === 'manager';
+  const canSeeAll = req.user.role === 'manager' || hasPermission(req.user.role, PERM.FIN_WORKER_EXPENSES_VIEW);
 
   const params = [day];
   let employeeCond = '';
-  if (!isManager) {
+  if (!canSeeAll) {
     params.push(req.user.id);
     employeeCond = `AND i.entered_by = $${params.length}`;
   } else if (employee_id && /^\d+$/.test(String(employee_id))) {

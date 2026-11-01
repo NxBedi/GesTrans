@@ -7,8 +7,19 @@
     <title>الوكالة الموريتانية للخدمات</title>
     <style>
       @import url('https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700;800&display=swap');
-      * { font-family: 'Tajawal', sans-serif; }
+      body { font-family: 'Tajawal', sans-serif; }
     </style>
+    <script>
+      // Apply the saved language before the first paint (avoids an RTL/LTR flash).
+      (function () {
+        try {
+          var lang = localStorage.getItem('lang') || 'ar';
+          var dir = localStorage.getItem('langDir') || (lang === 'ar' ? 'rtl' : 'ltr');
+          document.documentElement.lang = lang;
+          document.documentElement.dir = dir;
+        } catch (e) {}
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

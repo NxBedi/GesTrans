@@ -1,5 +1,6 @@
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { useAuth } from './contexts/AuthContext.jsx';
+import { useI18n } from './i18n/I18nContext.jsx';
 import Login from './pages/Login.jsx';
 import Layout from './components/Layout.jsx';
 import Dashboard from './pages/Dashboard.jsx';
@@ -21,8 +22,10 @@ import Liquidations from './pages/Liquidations.jsx';
 
 export default function App() {
   const { user, loading } = useAuth();
+  const { t } = useI18n();
+  const canFinance = !!user && ['manager', 'accountant'].includes(user.role);
 
-  if (loading) return <div className="page">جارٍ التحميل...</div>;
+  if (loading) return <div className="page">{t('common.loading')}</div>;
 
   return (
     <Routes>
@@ -31,19 +34,19 @@ export default function App() {
         <Route index element={user ? <Dashboard /> : <Navigate to="/login" />} />
         <Route path="/debts" element={user && user.role === 'manager' ? <Debts /> : <Navigate to="/" />} />
         <Route path="/settings" element={user && user.role === 'manager' ? <Settings /> : <Navigate to="/" />} />
-        <Route path="/containers" element={user ? <ListeBL /> : <Navigate to="/login" />} />
+        <Route path="/containers" element={user && user.role !== 'accountant' ? <ListeBL /> : <Navigate to="/" />} />
         <Route path="/liquidations" element={user && user.role === 'manager' ? <Liquidations /> : <Navigate to="/" />} />
         <Route path="/my-expenses" element={user ? <MyExpenses /> : <Navigate to="/login" />} />
         <Route path="/pricing-queue" element={user && user.role === 'manager' ? <PricingQueue /> : <Navigate to="/" />} />
         <Route path="/finished" element={user && user.role === 'manager' ? <FinishedContainers /> : <Navigate to="/" />} />
-        <Route path="/customers" element={user ? <Customers /> : <Navigate to="/login" />} />
+        <Route path="/customers" element={user && user.role !== 'accountant' ? <Customers /> : <Navigate to="/" />} />
         <Route path="/users" element={user && user.role === 'manager' ? <Users /> : <Navigate to="/" />} />
         <Route path="/invoice-types" element={user && user.role === 'manager' ? <InvoiceTypes /> : <Navigate to="/" />} />
         <Route path="/reports" element={user && user.role === 'manager' ? <Reports /> : <Navigate to="/" />} />
-        <Route path="/expenses" element={user && user.role === 'manager' ? <Expenses /> : <Navigate to="/" />} />
-        <Route path="/general-expenses" element={user && user.role === 'manager' ? <GeneralExpenses /> : <Navigate to="/" />} />
-        <Route path="/financial" element={user && user.role === 'manager' ? <Financial /> : <Navigate to="/" />} />
-        <Route path="/salary" element={user && user.role === 'manager' ? <SalaryLedger /> : <Navigate to="/" />} />
+        <Route path="/expenses" element={canFinance ? <Expenses /> : <Navigate to="/" />} />
+        <Route path="/general-expenses" element={canFinance ? <GeneralExpenses /> : <Navigate to="/" />} />
+        <Route path="/financial" element={canFinance ? <Financial /> : <Navigate to="/" />} />
+        <Route path="/salary" element={canFinance ? <SalaryLedger /> : <Navigate to="/" />} />
       </Route>
       <Route path="*" element={<Navigate to="/" />} />
     </Routes>

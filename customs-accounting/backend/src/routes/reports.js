@@ -3,10 +3,10 @@ import { query } from '../db.js';
 import { authRequired, allowRoles } from '../middleware/auth.js';
 
 const router = Router();
-router.use(authRequired, allowRoles('manager'));
+router.use(authRequired);
 
 // GET /api/reports/profits?from=&to=  - profit per priced container
-router.get('/profits', async (req, res) => {
+router.get('/profits', allowRoles('manager'), async (req, res) => {
   const { from, to } = req.query;
   const params = [];
   let where = '';
@@ -31,7 +31,7 @@ router.get('/profits', async (req, res) => {
 });
 
 // GET /api/reports/summary  - dashboard numbers
-router.get('/summary', async (req, res) => {
+router.get('/summary', allowRoles('manager'), async (req, res) => {
   const containers = await query(`
     SELECT status, COUNT(*)::int AS count FROM containers GROUP BY status
   `);
@@ -83,7 +83,7 @@ router.get('/summary', async (req, res) => {
 });
 
 // GET /api/reports/recent-payments - payments summary for the dashboard (today total + last 10)
-router.get('/recent-payments', async (req, res) => {
+router.get('/recent-payments', allowRoles('manager'), async (req, res) => {
   const [todayRow, recentRows] = await Promise.all([
     query(`SELECT COALESCE(SUM(amount),0)::numeric AS total FROM payments WHERE payment_date = CURRENT_DATE`),
     query(`
@@ -102,7 +102,7 @@ router.get('/recent-payments', async (req, res) => {
 });
 
 // GET /api/reports/customer-balances - what each customer owes (old debt + current containers)
-router.get('/customer-balances', async (req, res) => {
+router.get('/customer-balances', allowRoles('manager'), async (req, res) => {
   const { rows } = await query(`
     SELECT cu.id, cu.name AS customer_name, cu.phone, cu.email, cu.due_date, cu.opening_balance,
            COALESCE((SELECT SUM(od.amount) FROM customer_old_debts od WHERE od.customer_id = cu.id), 0)::numeric AS old_debts,
@@ -170,7 +170,7 @@ router.get('/payments', allowRoles('manager'), async (req, res) => {
 // GET /api/reports/dashboard - KPI bundle for the home page (cash, flows, debts, containers)
 router.get('/dashboard', allowRoles('manager'), async (req, res) => {
   const today = new Date().toISOString().slice(0, 10);
-  const [cashBox, debts, todayFlows, prevFlows, containerCounts, pricing] = await Promise.all([
+  const [cashBox, debts, todayFlows, prevFlows, containerCounts, pricing, expenseTotals] = await Promise.all([
     query(`
       SELECT (COALESCE((SELECT SUM(amount) FROM capital_transactions),0)
             + COALESCE((SELECT SUM(amount) FROM cashbox_adjustments),0)
@@ -215,6 +215,12 @@ router.get('/dashboard', allowRoles('manager'), async (req, res) => {
       FROM containers GROUP BY status
     `),
     query(`SELECT COALESCE(SUM(final_price),0)::numeric AS billed, COALESCE(SUM(profit),0)::numeric AS profit FROM pricing`),
+    query(`
+      SELECT (COALESCE((SELECT SUM(g.amount) FROM general_expenses g),0)
+             + COALESCE((SELECT SUM(-s.amount) FROM salary_transactions s),0))::numeric AS total,
+             COALESCE((SELECT SUM(g.amount) FROM general_expenses g),0)::numeric AS institution,
+             COALESCE((SELECT SUM(-s.amount) FROM salary_transactions s),0)::numeric AS salaries
+    `),
   ]);
 
   const cashTotal = Number(cashBox.rows[0].total);
@@ -246,8 +252,21 @@ router.get('/dashboard', allowRoles('manager'), async (req, res) => {
 
   const pct = (cur, prev) => (cur === 0 && prev === 0 ? 0 : prev === 0 ? 100 : Math.round(((cur - prev) / Math.abs(prev)) * 100));
 
+  const closedCount = byStatus.closed || 0;
+  const pricedCount = byStatus.priced || 0;
+  const liquidatedCount = closedCount + pricedCount;
+
+  const institutionExpenses = Number(expenseTotals.rows[0].institution);
+  const paidSalaries = Number(expenseTotals.rows[0].salaries);
+
   res.json({
     cash_in_hand: cashTotal,
+    total_expenses: institutionExpenses + paidSalaries,
+    expenses: {
+      total: institutionExpenses + paidSalaries,
+      institution: institutionExpenses,
+      salaries: paidSalaries,
+    },
     today: { income: todayIncome, expense: todayExpense, net: todayIncome - todayExpense },
     yesterday: { income: prevIncome, expense: prevExpense },
     income_change_pct: pct(todayIncome, prevIncome),
@@ -264,14 +283,19 @@ router.get('/dashboard', allowRoles('manager'), async (req, res) => {
       in_transit: byStatus.closed || 0,
       received: byStatus.priced || 0,
       by_status: byStatus,
+      closed: closedCount,
+      priced: pricedCount,
+      liquidated: liquidatedCount,
     },
     billed_total: Number(pricing.rows[0].billed),
     profit_total: Number(pricing.rows[0].profit),
+    container_profits: Number(pricing.rows[0].profit),
+    container_profit: Number(pricing.rows[0].profit),
   });
 });
 
 // GET /api/reports/containers?status=&from=&to=
-router.get('/containers', async (req, res) => {
+router.get('/containers', allowRoles('manager'), async (req, res) => {
   const { status, from, to } = req.query;
   const params = [];
   const conds = [];
@@ -307,8 +331,8 @@ function expenseFilter(req) {
   return { where: conds.length ? `WHERE ${conds.join(' AND ')}` : '', params };
 }
 
-// GET /api/reports/expenses - every expense invoice, trackable, filterable (manager)
-router.get('/expenses', async (req, res) => {
+// GET /api/reports/expenses - every expense invoice, trackable, filterable (manager, accountant)
+router.get('/expenses', allowRoles('manager', 'accountant'), async (req, res) => {
   const { where, params } = expenseFilter(req);
   const { rows } = await query(`
     SELECT i.id, i.invoice_number, i.amount, i.entry_date, i.notes,
@@ -326,8 +350,8 @@ router.get('/expenses', async (req, res) => {
   res.json(rows);
 });
 
-// GET /api/reports/expenses-summary - daily + per-employee aggregation (manager)
-router.get('/expenses-summary', async (req, res) => {
+// GET /api/reports/expenses-summary - daily + per-employee aggregation (manager, accountant)
+router.get('/expenses-summary', allowRoles('manager', 'accountant'), async (req, res) => {
   const { where, params } = expenseFilter(req);
 
   const daily = await query(`
@@ -364,7 +388,7 @@ router.get('/expenses-summary', async (req, res) => {
 });
 
 // GET /api/reports/invoice-types-summary - invoices grouped by type (manager)
-router.get('/invoice-types-summary', async (req, res) => {
+router.get('/invoice-types-summary', allowRoles('manager'), async (req, res) => {
   const { where, params } = expenseFilter(req);
   const { rows } = await query(`
     SELECT t.id AS type_id, t.name AS type_name, t.allowed_role,

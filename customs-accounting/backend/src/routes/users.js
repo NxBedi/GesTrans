@@ -10,8 +10,8 @@ function publicUser(row) {
   return { id: row.id, username: row.username, full_name: row.full_name, role: row.role, salary: Number(row.salary), is_active: row.is_active, created_at: row.created_at };
 }
 
-// GET /api/users  (manager only)
-router.get('/', allowRoles('manager'), async (req, res) => {
+// GET /api/users  (manager & accountant: the accountant needs the employee list for filters)
+router.get('/', allowRoles('manager', 'accountant'), async (req, res) => {
   const { rows } = await query('SELECT id, username, full_name, role, salary, is_active, created_at FROM users ORDER BY id');
   res.json(rows);
 });
@@ -22,7 +22,7 @@ router.post('/', allowRoles('manager'), async (req, res) => {
   if (!username || !password || !full_name || !role) {
     return res.status(400).json({ error: 'جميع الحقول مطلوبة' });
   }
-  if (!['manager', 'employee'].includes(role)) {
+  if (!['manager', 'employee', 'accountant'].includes(role)) {
     return res.status(400).json({ error: 'دور غير صالح' });
   }
   const salaryNum = salary === undefined || salary === '' ? 0 : Number(salary);
@@ -61,7 +61,7 @@ router.put('/:id', allowRoles('manager'), async (req, res) => {
     sets.push(`salary = ${push(salaryNum)}`);
   }
   if (role !== undefined) {
-    if (!['manager', 'employee'].includes(role)) return res.status(400).json({ error: 'دور غير صالح' });
+    if (!['manager', 'employee', 'accountant'].includes(role)) return res.status(400).json({ error: 'دور غير صالح' });
     if (id === req.user.id && role !== 'manager') return res.status(400).json({ error: 'لا يمكنك تغيير دور حسابك الخاص' });
     sets.push(`role = ${push(role)}`);
   }

@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { usersApi } from '../utils/api.js';
 import { fmt } from './Dashboard.jsx';
 
-const roleLabels = { manager: 'مدير', employee: 'موظف' };
+const roleLabels = { manager: 'مدير', employee: 'موظف', accountant: 'محاسب' };
 
 export default function Users() {
   const [rows, setRows] = useState([]);
@@ -54,7 +54,7 @@ export default function Users() {
       <div className="toolbar">
         <div>
           <h1 className="page-title">المستخدمون</h1>
-          <p className="page-sub">إدارة حسابات المديرين والموظفين</p>
+          <p className="page-sub">إدارة حسابات المديرين والمحاسبين والموظفين</p>
         </div>
         <button className="btn btn-primary" onClick={openNew}>➕ مستخدم جديد</button>
       </div>
@@ -76,11 +76,12 @@ export default function Users() {
               <select className="select" value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value })}>
                 <option value="employee">موظف</option>
                 <option value="manager">مدير</option>
+                <option value="accountant">محاسب</option>
               </select>
             </div>
             <div className="form-row">
-              <label className="form-label">الراتب الشهري (MRU) — للموظفين *</label>
-              <input className="input" type="number" step="0.01" min="0" dir="ltr" value={form.salary} onChange={(e) => setForm({ ...form, salary: e.target.value })} required />
+              <label className="form-label">الراتب الشهري (MRU) — للموظفين فقط</label>
+              <input className="input" type="number" step="0.01" min="0" dir="ltr" value={form.salary} onChange={(e) => setForm({ ...form, salary: e.target.value })} required={form.role === 'employee'} />
             </div>
             <div className="form-row">
               <label className="form-label">{editId ? 'كلمة مرور جديدة (اختياري)' : 'كلمة المرور *'}</label>
@@ -105,7 +106,7 @@ export default function Users() {
               <tr key={u.id}>
                 <td><b>{u.full_name}</b></td>
                 <td>{u.username}</td>
-                <td><span className={u.role === 'manager' ? 'badge badge-priced' : 'badge badge-processing'}>{roleLabels[u.role]}</span></td>
+                <td><span className={u.role === 'manager' ? 'badge badge-priced' : u.role === 'accountant' ? 'badge badge-processing' : 'badge badge-processing'}>{roleLabels[u.role]}</span></td>
                 <td className="nowrap">{u.role === 'employee' ? fmt(u.salary) : <span className="muted">—</span>}</td>
                 <td>{u.is_active ? <span className="badge badge-paid">نشط</span> : <span className="badge badge-processing">معطل</span>}</td>
                 <td className="nowrap">

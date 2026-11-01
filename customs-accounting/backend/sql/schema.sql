@@ -87,6 +87,32 @@ ALTER TABLE containers DROP COLUMN IF EXISTS liquidation_paid_amount;
 ALTER TABLE containers DROP COLUMN IF EXISTS liquidation_paid;
 ALTER TABLE containers DROP COLUMN IF EXISTS liquidation_paid_at;
 
+-- ---------- container access (إظهار الحاوية للموظفين) ----------
+-- صلاحية رؤية فقط: لا تنسخ الحاوية ولا تعدّل بياناتها.
+-- المدير يرى كل الحاويات دائماً؛ الموظف يرى فقط ما أُسند إليه هنا.
+-- حاوية جديدة تبدأ مخفية عن الجميع، إلا إذا أنشأها موظف فتُمنح له تلقائياً.
+CREATE TABLE IF NOT EXISTS container_access (
+  id          SERIAL PRIMARY KEY,
+  container_id INT NOT NULL REFERENCES containers(id) ON DELETE CASCADE,
+  employee_id  INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  granted_by   INT REFERENCES users(id) ON DELETE SET NULL,
+  granted_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (container_id, employee_id)
+);
+CREATE INDEX IF NOT EXISTS idx_container_access_container ON container_access(container_id);
+CREATE INDEX IF NOT EXISTS idx_container_access_employee ON container_access(employee_id);
+
+-- سجل تدقيق: من منح/سحب صلاحية رؤية أي حاوية لأي موظف ومتى
+CREATE TABLE IF NOT EXISTS container_access_log (
+  id          SERIAL PRIMARY KEY,
+  container_id INT NOT NULL REFERENCES containers(id) ON DELETE CASCADE,
+  employee_id  INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  action       VARCHAR(10) NOT NULL, -- 'grant' | 'revoke'
+  actor_id     INT REFERENCES users(id) ON DELETE SET NULL,
+  created_at   TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_container_access_log_container ON container_access_log(container_id);
+
 -- ---------- invoice types ----------
 CREATE TABLE IF NOT EXISTS invoice_types (
   id          SERIAL PRIMARY KEY,

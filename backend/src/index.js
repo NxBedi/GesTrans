@@ -37,6 +37,7 @@ import generalExpenseRoutes from './routes/general-expenses.js';
 import financialRoutes from './routes/financial.js';
 import salaryRoutes from './routes/salary.js';
 import reportRoutes from './routes/reports.js';
+import accountantRoutes from './routes/accountant.js';
 import settingRoutes from './routes/settings.js';
 import backupRoutes, { startBackupScheduler } from './routes/backups.js';
 
@@ -73,6 +74,7 @@ app.use('/api/general-expenses', generalExpenseRoutes);
 app.use('/api/financial', financialRoutes);
 app.use('/api/salary', salaryRoutes);
 app.use('/api/reports', reportRoutes);
+app.use('/api/accountant', accountantRoutes);
 app.use('/api/settings', settingRoutes);
 app.use('/api/backups', backupRoutes);
 

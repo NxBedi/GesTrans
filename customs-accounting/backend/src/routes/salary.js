@@ -6,7 +6,7 @@ const router = Router();
 router.use(authRequired);
 
 // GET /api/salary/employees - employees with their fixed salary + current-month balance
-router.get('/employees', allowRoles('manager'), async (req, res) => {
+router.get('/employees', allowRoles('manager', 'accountant'), async (req, res) => {
   const month = String(req.query.month || new Date().toISOString().slice(0, 7));
   const { rows } = await query(`
     SELECT u.id, u.full_name, u.is_active, u.salary,
@@ -33,7 +33,7 @@ router.get('/employees', allowRoles('manager'), async (req, res) => {
 
 // GET /api/salary/statement/:userId?from=&to= - كشف حساب موظف (شهري + حركات ضمن الفترة)
 // if from/to omitted -> تغطي كل الفترات
-router.get('/statement/:userId', allowRoles('manager'), async (req, res) => {
+router.get('/statement/:userId', allowRoles('manager', 'accountant'), async (req, res) => {
   const userId = Number(req.params.userId);
   const { from, to } = req.query;
   const staff = await query('SELECT id, full_name, salary FROM users WHERE id = $1', [userId]);
@@ -105,7 +105,7 @@ router.get('/statement/:userId', allowRoles('manager'), async (req, res) => {
 });
 
 // GET /api/salary/transactions?employee_id=&from=&to=
-router.get('/transactions', allowRoles('manager'), async (req, res) => {
+router.get('/transactions', allowRoles('manager', 'accountant'), async (req, res) => {
   const { employee_id, from, to } = req.query;
   const conds = [];
   const params = [];
@@ -133,7 +133,7 @@ router.get('/transactions', allowRoles('manager'), async (req, res) => {
 // POST /api/salary/advance - دفع مقدم من الراتب { user_id, amount, txn_date, notes }
 // المبلغ لا يتجاوز المتبقي من راتب الشهر (الراتب − المقدمات السابقة في نفس الشهر).
 // يُخزَّن amount سالباً ويُخصم تلقائياً من نقدية الصندوق.
-router.post('/advance', allowRoles('manager'), async (req, res) => {
+router.post('/advance', allowRoles('manager', 'accountant'), async (req, res) => {
   const { user_id, amount, txn_date, notes } = req.body || {};
   const user = Number(user_id);
   const amt = Number(amount);
@@ -168,7 +168,7 @@ router.post('/advance', allowRoles('manager'), async (req, res) => {
 
 // POST /api/salary/remainder - دفع بقية الراتب { user_id, txn_date, notes }
 // البقية تُحسب تلقائياً = راتب الشهر − المقدمات المسجلة في نفس الشهر.
-router.post('/remainder', allowRoles('manager'), async (req, res) => {
+router.post('/remainder', allowRoles('manager', 'accountant'), async (req, res) => {
   const { user_id, txn_date, notes } = req.body || {};
   const user = Number(user_id);
   if (!Number.isInteger(user)) return res.status(400).json({ error: 'الموظف غير صالح' });

@@ -1,12 +1,17 @@
 import { Router } from 'express';
 import { query, pool } from '../db.js';
 import { authRequired } from '../middleware/auth.js';
+import { hasPermission, PERM } from '../middleware/permissions.js';
 
 const router = Router();
 router.use(authRequired);
 
 // POST /api/containers/:containerId/invoices
 router.post('/:containerId/invoices', async (req, res) => {
+  // المحاسب مقيّد بالقراءة على فواتير الحاويات — الإنشاء يبقى للمدير والعامل
+  if (req.user.role === 'accountant') {
+    return res.status(403).json({ error: 'المحاسب لا ينشئ فواتير الحاويات — صلاحية العرض فقط' });
+  }
   const containerId = Number(req.params.containerId);
   const { invoice_type_id, invoice_number, amount, entry_date, notes } = req.body || {};
   if (!invoice_type_id || !entry_date) {
@@ -89,9 +94,10 @@ router.post('/:containerId/invoices', async (req, res) => {
 // GET /api/containers/:containerId/invoices - return invoices (filtered by role)
 router.get('/:containerId/invoices', async (req, res) => {
   const containerId = Number(req.params.containerId);
+  const canSeeAll = req.user.role === 'manager' || hasPermission(req.user.role, PERM.FIN_INVOICES_VIEW);
   const cRes = await query('SELECT id, status FROM containers WHERE id = $1', [containerId]);
   if (!cRes.rows.length) return res.status(404).json({ error: 'الحاوية غير موجودة' });
-  if (req.user.role !== 'manager' && !['registered', 'processing'].includes(cRes.rows[0].status)) {
+  if (!canSeeAll && !['registered', 'processing'].includes(cRes.rows[0].status)) {
     return res.status(403).json({ error: 'الحاوية غير متاحة' });
   }
   const { rows } = await query(`
@@ -103,7 +109,7 @@ router.get('/:containerId/invoices', async (req, res) => {
     ORDER BY i.entry_date, i.id
   `, [containerId]);
   let list = rows;
-  if (req.user.role !== 'manager') {
+  if (!canSeeAll) {
     list = list.filter((i) => i.allowed_role !== 'manager');
   }
   res.json(list);
