@@ -589,3 +589,29 @@ button { font-family: inherit; }
   .date-field { flex-direction: column; align-items: flex-start; gap: 4px; }
   .statement-company-contact, .print-header-info { font-size: 10px; }
 }
+
+/* ============ Language switcher (merged from the i18n version) ============ */
+.lang-switch {
+  display: inline-flex; align-items: center; gap: 4px; padding: 4px;
+  background: #eef2f7; border: 1px solid var(--border); border-radius: 11px;
+}
+.lang-btn {
+  border: none; background: transparent; cursor: pointer; font-family: inherit;
+  font-size: 12.5px; font-weight: 800; color: var(--ink-2);
+  padding: 6px 12px; border-radius: 8px; transition: .15s; white-space: nowrap;
+}
+.lang-btn:hover { background: rgba(0, 156, 180, .1); }
+.lang-btn.active { background: var(--primary); color: #fff; box-shadow: var(--shadow-sm); }
+.lang-switch-compact { background: rgba(255, 255, 255, .9); }
+.lang-switch-sidebar {
+  margin-top: 12px; width: 100%; justify-content: center;
+  background: rgba(255, 255, 255, .07); border-color: #334155;
+}
+.lang-switch-sidebar .lang-btn { color: #cbd5e1; flex: 1; }
+.lang-switch-sidebar .lang-btn:hover { background: rgba(255, 255, 255, .1); }
+.lang-switch-sidebar .lang-btn.active { background: var(--primary); color: #fff; }
+.login-lang {
+  position: absolute; top: 18px; inset-inline-end: 18px; z-index: 2;
+}
+.login-wrap { position: relative; }
+.print-area { direction: inherit; }

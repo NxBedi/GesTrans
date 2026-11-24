@@ -4,6 +4,7 @@ import { customersApi } from '../utils/api.js';
 import { fmt, dmy, balanceClass } from '../utils/format.js';
 import { useCustomerStatement } from '../hooks/useCustomerStatement.js';
 import { useCompany } from '../contexts/CompanyContext.jsx';
+import { useI18n } from '../i18n/I18nContext.jsx';
 import CompanyLogo from '../components/CompanyLogo.jsx';
 import { useFeedback } from '../components/Feedback.jsx';
 import { exportStatementPdf } from '../utils/export.js';
@@ -19,6 +20,7 @@ export default function ClientAccount() {
   const navigate = useNavigate();
   const location = useLocation();
   const { company } = useCompany();
+  const { t, dlong, companyName } = useI18n();
   const { toast, confirm } = useFeedback();
 
   // draft values live in the filter card; `applied*` drive the statement query
@@ -38,7 +40,7 @@ export default function ClientAccount() {
 
   const { data, loading, error, refresh } = useCustomerStatement(customerId, { from, to });
 
-  const customerName = data?.customer?.name || `Client #${customerId}`;
+  const customerName = data?.customer?.name || `${t('common.customer')} #${customerId}`;
   const backTo = location.state?.back || '/customers';
 
   const periodEntries = useMemo(
@@ -55,8 +57,11 @@ export default function ClientAccount() {
     return Number(data?.period?.opening ?? data?.totals?.balance ?? 0);
   }, [data]);
   const periodLabel = data?.period?.from
-    ? `Du ${dmy(data.period.from)} au ${dmy(data.period.to) || 'aujourd’hui'}`
-    : 'Historique complet';
+    ? t('clientAccount.periodFrom', {
+        from: dmy(data.period.from),
+        to: dmy(data.period.to) || t('clientAccount.today'),
+      })
+    : t('clientAccount.periodAll');
 
   const applyPeriod = () => {
     setFrom(fromInput);
@@ -92,11 +97,11 @@ export default function ClientAccount() {
     setEntryErr('');
     const amount = Number(entryForm.amount);
     if (!entryForm.amount || !isFinite(amount) || amount <= 0) {
-      setEntryErr('Saisissez un montant valide supérieur à zéro');
+      setEntryErr(t('clientAccount.invalidAmount'));
       return;
     }
     if (entryModal.kind === 'old_debt' && entryForm.date > today()) {
-      setEntryErr('La date du débit ne peut pas être dans le futur');
+      setEntryErr(t('clientAccount.futureDate'));
       return;
     }
     setSaving(true);
@@ -121,12 +126,12 @@ export default function ClientAccount() {
           await customersApi.removeOldDebt(customerId, entryModal.entry.id);
         }
       }
-      toast(entryModal.mode === 'edit' ? 'Écriture modifiée' : 'Écriture enregistrée');
+      toast(t(entryModal.mode === 'edit' ? 'clientAccount.savedEdit' : 'clientAccount.saved'));
       setEntryModal(null);
       await refresh();
       refreshDashboard();
     } catch (err) {
-      setEntryErr(err.message || 'Enregistrement impossible');
+      setEntryErr(err.message || t('clientAccount.saveError'));
     } finally {
       setSaving(false);
     }
@@ -135,18 +140,25 @@ export default function ClientAccount() {
   const deleteEntry = async (entry) => {
     if (entry.kind !== 'payment' && entry.kind !== 'old_debt') return;
     const ok = await confirm(
-      `Supprimer l’écriture du ${dmy(entry.date)} d’un montant de ${fmt(entry.debit ?? entry.credit)} MRU ?`,
-      { title: 'Confirmer la suppression', danger: true, okLabel: 'Supprimer' }
+      t('clientAccount.confirmDelete', {
+        date: dmy(entry.date),
+        amount: fmt(entry.debit ?? entry.credit),
+      }),
+      {
+        title: t('clientAccount.confirmDeleteTitle'),
+        danger: true,
+        okLabel: t('common.delete'),
+      }
     );
     if (!ok) return;
     try {
       if (entry.kind === 'payment') await customersApi.removePayment(customerId, entry.id);
       else await customersApi.removeOldDebt(customerId, entry.id);
-      toast('Écriture supprimée');
+      toast(t('clientAccount.deleted'));
       await refresh();
       refreshDashboard();
     } catch (err) {
-      toast(err.message || 'Suppression impossible', 'error');
+      toast(err.message || t('clientAccount.deleteError'), 'error');
     }
   };
 
@@ -157,7 +169,7 @@ export default function ClientAccount() {
     try {
       await exportStatementPdf(data.customer, data.entries, data.period, data.totals);
     } catch (err) {
-      setPdfError(err.message || 'Impossible de générer le PDF');
+      setPdfError(err.message || t('clientAccount.pdfError'));
     } finally {
       setPdfBusy(false);
     }
@@ -171,39 +183,39 @@ export default function ClientAccount() {
 
   const entryTitle = !entryModal ? ''
     : entryModal.kind === 'payment'
-      ? (entryModal.mode === 'edit' ? 'Modifier le versement' : 'Nouveau versement')
-      : (entryModal.mode === 'edit' ? 'Modifier le débit' : 'Nouveau débit');
+      ? t(entryModal.mode === 'edit' ? 'clientAccount.editPayment' : 'clientAccount.newPaymentModal')
+      : t(entryModal.mode === 'edit' ? 'clientAccount.editDebt' : 'clientAccount.newDebtModal');
 
   return (
     <div className="page clients-page account-page">
       <div className="clients-card clients-header no-print">
         <div>
-          <h1 className="clients-title">Compte client</h1>
+          <h1 className="clients-title">{t('clientAccount.title')}</h1>
           <p className="clients-subtitle" dir="auto">{customerName}</p>
         </div>
         <div className="clients-header-actions">
-          <button className="clients-pill pill-green" onClick={() => openCreate('payment')}>+ Versement</button>
-          <button className="clients-pill pill-red" onClick={() => openCreate('old_debt')}>+ Débit</button>
+          <button className="clients-pill pill-green" onClick={() => openCreate('payment')}>{t('clientAccount.newPayment')}</button>
+          <button className="clients-pill pill-red" onClick={() => openCreate('old_debt')}>{t('clientAccount.newDebit')}</button>
           <button className="clients-pill pill-blue" onClick={() => setShowStatement(true)} disabled={!data || loading}>
-            Relevé complet
+            {t('clientAccount.fullStatement')}
           </button>
-          <button className="clients-pill pill-gray" onClick={() => navigate(backTo)}>← Retour</button>
+          <button className="clients-pill pill-gray" onClick={() => navigate(backTo)}>{t('clientAccount.back')}</button>
         </div>
       </div>
 
       <div className="clients-card clients-filters no-print">
-        <div className="clients-filter-title">📅 Filtrer par période</div>
+        <div className="clients-filter-title">{t('clientAccount.filterPeriod')}</div>
         <div className="clients-filter-row">
           <label className="date-field">
-            <span>Du</span>
+            <span>{t('common.from')}</span>
             <input className="input" type="date" value={fromInput} max={toInput || undefined} onChange={(e) => setFromInput(e.target.value)} />
           </label>
           <label className="date-field">
-            <span>Au</span>
+            <span>{t('common.to')}</span>
             <input className="input" type="date" value={toInput} min={fromInput || undefined} onChange={(e) => setToInput(e.target.value)} />
           </label>
-          <button className="clients-pill pill-blue" onClick={applyPeriod} disabled={loading}>🔍 Filtrer</button>
-          <button className="clients-pill pill-gray" onClick={resetPeriod}>Réinitialiser</button>
+          <button className="clients-pill pill-blue" onClick={applyPeriod} disabled={loading}>🔍 {t('common.filter')}</button>
+          <button className="clients-pill pill-gray" onClick={resetPeriod}>{t('common.reset')}</button>
         </div>
       </div>
 
@@ -211,45 +223,45 @@ export default function ClientAccount() {
 
       <div className="clients-summary">
         <div className="clients-card stat-card">
-          <div className="stat-label">Client</div>
+          <div className="stat-label">{t('common.customer')}</div>
           <div className="account-client-name" dir="auto">{customerName}</div>
           <div className="stat-note" dir="ltr">{data?.customer?.phone || '—'}</div>
         </div>
         <div className="clients-card stat-card">
-          <div className="stat-label">Total débit</div>
-          <div className={`stat-value ${balanceClass(1)}`}>{fmt(periodTotals.debit)} MRU</div>
+          <div className="stat-label">{t('clientAccount.totalDebit')}</div>
+          <div className={`stat-value ${balanceClass(1)}`}>{fmt(periodTotals.debit)} {t('common.currency')}</div>
           <div className="stat-note">{periodLabel}</div>
         </div>
         <div className="clients-card stat-card">
-          <div className="stat-label">Total crédit</div>
-          <div className={`stat-value ${balanceClass(-1)}`}>{fmt(periodTotals.credit)} MRU</div>
+          <div className="stat-label">{t('clientAccount.totalCredit')}</div>
+          <div className={`stat-value ${balanceClass(-1)}`}>{fmt(periodTotals.credit)} {t('common.currency')}</div>
           <div className="stat-note">{periodLabel}</div>
         </div>
         <div className="clients-card stat-card">
-          <div className="stat-label">Solde</div>
-          <div className={`stat-value ${balanceClass(data?.totals?.balance)}`}>{fmt(data?.totals?.balance)} MRU</div>
-          <div className="stat-note">Solde actuel — identique à la liste des clients</div>
+          <div className="stat-label">{t('common.balance')}</div>
+          <div className={`stat-value ${balanceClass(data?.totals?.balance)}`}>{fmt(data?.totals?.balance)} {t('common.currency')}</div>
+          <div className="stat-note">{t('clientAccount.balanceNote')}</div>
         </div>
       </div>
 
       <div className="clients-card" style={{ padding: 0, overflow: 'hidden' }}>
-        <div className="clients-table-head no-print">Historique du compte</div>
+        <div className="clients-table-head no-print">{t('clientAccount.historyTitle')}</div>
         <div className="clients-table-scroll">
           <table className="table clients-table account-table">
             <thead>
               <tr>
-                <th>Date</th>
-                <th>Désignation</th>
-                <th>Débit</th>
-                <th>Crédit</th>
-                <th>Solde</th>
-                <th className="no-print">Actions</th>
+                <th>{t('common.date')}</th>
+                <th>{t('common.description')}</th>
+                <th>{t('common.debit')}</th>
+                <th>{t('common.credit')}</th>
+                <th>{t('common.balance')}</th>
+                <th className="no-print">{t('common.actions')}</th>
               </tr>
             </thead>
             <tbody>
-              {loading && <tr><td colSpan="6" className="muted" style={{ textAlign: 'center', padding: 20 }}>Chargement…</td></tr>}
+              {loading && <tr><td colSpan="6" className="muted" style={{ textAlign: 'center', padding: 20 }}>{t('common.loadingData')}</td></tr>}
               {!loading && data?.entries?.length === 0 && (
-                <tr><td colSpan="6" className="muted" style={{ textAlign: 'center', padding: 20 }}>Aucune écriture</td></tr>
+                <tr><td colSpan="6" className="muted" style={{ textAlign: 'center', padding: 20 }}>{t('clientAccount.noEntries')}</td></tr>
               )}
               {(data?.entries || []).map((entry, idx) => (
                 <tr key={`${entry.kind}-${entry.id ?? 'opening'}-${idx}`} className={entry.kind === 'opening' ? 'account-opening-row' : ''}>
@@ -264,17 +276,17 @@ export default function ClientAccount() {
                   <td className={`nowrap ${entry.credit != null ? balanceClass(-1) : ''}`}>
                     {entry.credit != null ? <b>{fmt(entry.credit)}</b> : '—'}
                   </td>
-                  <td className={`nowrap ${balanceClass(entry.balance)}`}><b>{fmt(entry.balance)} MRU</b></td>
+                  <td className={`nowrap ${balanceClass(entry.balance)}`}><b>{fmt(entry.balance)} {t('common.currency')}</b></td>
                   <td className="nowrap no-print">
                     {(entry.kind === 'payment' || entry.kind === 'old_debt') ? (
                       <>
-                        <button className="icon-btn icon-edit" title="Modifier" onClick={() => openEdit(entry)}>✏️</button>
-                        <button className="icon-btn icon-delete" title="Supprimer" onClick={() => deleteEntry(entry)}>🗑</button>
+                        <button className="icon-btn icon-edit" title={t('common.edit')} onClick={() => openEdit(entry)}>✏️</button>
+                        <button className="icon-btn icon-delete" title={t('common.delete')} onClick={() => deleteEntry(entry)}>🗑</button>
                       </>
                     ) : entry.kind === 'invoice' ? (
                       <>
-                        <button className="icon-btn icon-edit" title="Facture : modifier depuis le conteneur" disabled>✏️</button>
-                        <button className="icon-btn icon-delete" title="Facture : supprimer depuis le conteneur" disabled>🗑</button>
+                        <button className="icon-btn icon-edit" title={t('clientAccount.invoiceEdit')} disabled>✏️</button>
+                        <button className="icon-btn icon-delete" title={t('clientAccount.invoiceDelete')} disabled>🗑</button>
                       </>
                     ) : null}
                   </td>
@@ -285,8 +297,8 @@ export default function ClientAccount() {
         </div>
         {data?.entries?.length > 0 && (
           <div className="account-table-footer">
-            <span>Solde à la fin de la période</span>
-            <b className={balanceClass(closingBalance)}>{fmt(closingBalance)} MRU</b>
+            <span>{t('clientAccount.footerBalance')}</span>
+            <b className={balanceClass(closingBalance)}>{fmt(closingBalance)} {t('common.currency')}</b>
             <span className="muted">{periodLabel}</span>
           </div>
         )}
@@ -298,27 +310,27 @@ export default function ClientAccount() {
             <div className="modal-title">{entryTitle}</div>
             <div className="modal-sub">{customerName}</div>
             <div className="form-row">
-              <label className="form-label">Montant (MRU) *</label>
+              <label className="form-label">{t('clientAccount.amountLabel')}</label>
               <input className="input" type="number" step="0.01" min="0.01" dir="ltr" value={entryForm.amount} onChange={(e) => setEntryForm({ ...entryForm, amount: e.target.value })} required />
             </div>
             <div className="form-row">
-              <label className="form-label">Date *</label>
+              <label className="form-label">{t('clientAccount.dateLabel')}</label>
               <input className="input" type="date" value={entryForm.date} onChange={(e) => setEntryForm({ ...entryForm, date: e.target.value })} required />
             </div>
             <div className="form-row">
-              <label className="form-label">Désignation / note</label>
+              <label className="form-label">{t('clientAccount.noteLabel')}</label>
               <input className="input" dir="auto" value={entryForm.notes} onChange={(e) => setEntryForm({ ...entryForm, notes: e.target.value })} />
             </div>
             {entryErr && <div className="form-error">{entryErr}</div>}
             {entryModal.mode === 'edit' && (
               <div className="clients-card" style={{ padding: 10, marginTop: 8, fontSize: 12.5 }}>
-                L’ancienne écriture sera remplacée par la nouvelle après enregistrement.
+                {t('clientAccount.replaceNote')}
               </div>
             )}
             <div className="modal-actions">
-              <button className="clients-pill pill-gray" type="button" onClick={() => setEntryModal(null)}>Annuler</button>
+              <button className="clients-pill pill-gray" type="button" onClick={() => setEntryModal(null)}>{t('common.cancel')}</button>
               <button className={`clients-pill ${entryModal.kind === 'payment' ? 'pill-green' : 'pill-red'}`} type="submit" disabled={saving}>
-                {saving ? 'Enregistrement…' : 'Enregistrer'}
+                {saving ? t('clientAccount.saving') : t('common.save')}
               </button>
             </div>
           </form>
@@ -330,25 +342,25 @@ export default function ClientAccount() {
           <div className="modal statement-modal" style={{ maxWidth: 900 }} onClick={(e) => e.stopPropagation()}>
             <div className="no-print statement-toolbar">
               <div>
-                <div className="modal-title">Relevé complet</div>
+                <div className="modal-title">{t('clientAccount.fullStatement')}</div>
                 <div className="modal-sub">{customerName} — {periodLabel}</div>
               </div>
               <div className="clients-header-actions">
-                <button className="clients-pill pill-blue" onClick={printStatement}>🖨 Imprimer</button>
+                <button className="clients-pill pill-blue" onClick={printStatement}>{t('clientAccount.print')}</button>
                 <button className="clients-pill pill-blue" onClick={downloadPdf} disabled={pdfBusy}>
-                  {pdfBusy ? 'Génération…' : '📄 PDF'}
+                  {pdfBusy ? t('clientAccount.generating') : t('clientAccount.pdf')}
                 </button>
-                <button className="clients-pill pill-gray" onClick={() => setShowStatement(false)}>Fermer</button>
+                <button className="clients-pill pill-gray" onClick={() => setShowStatement(false)}>{t('common.close')}</button>
               </div>
             </div>
             {pdfError && <p className="form-error no-print">{pdfError}</p>}
 
             <div className="print-area card statement-sheet">
               <div className="print-header statement-header">
-                <CompanyLogo className="print-logo" alt={`Logo ${company.nameFr || company.nameAr}`} />
+                <CompanyLogo className="print-logo" alt={t('statement.logoAlt', { company: companyName(company) })} />
                 <div className="statement-company">
-                  <div className="print-company-name" dir="auto">{company.nameFr || company.nameAr}</div>
-                  <div className="muted" dir="auto">{company.nameAr}</div>
+                  <div className="print-company-name" dir="auto">{companyName(company)}</div>
+                  <div className="muted" dir="auto">{company.nameFr !== companyName(company) ? company.nameFr : company.nameAr}</div>
                   <div className="muted" dir="ltr">{company.form}</div>
                   <div className="statement-company-contact" dir="ltr">
                     {company.tel}<br />
@@ -357,53 +369,58 @@ export default function ClientAccount() {
                   </div>
                 </div>
                 <div className="print-header-info" dir="ltr">
-                  <div>Édité le {new Date().toLocaleDateString('fr-FR')}</div>
-                  <div>N° client : {data.customer.id}</div>
+                  <div>{t('clientAccount.editedOn', { date: dlong(new Date()) })}</div>
+                  <div>{t('clientAccount.clientNo', { id: data.customer.id })}</div>
                 </div>
               </div>
 
-              <div className="statement-title">RELEVÉ DE COMPTE CLIENT</div>
+              <div className="statement-title">{t('clientAccount.statementTitle')}</div>
 
               <table className="table statement-meta">
                 <tbody>
-                  <tr><th>Client</th><td><b dir="auto">{data.customer.name}</b></td><th>Téléphone</th><td dir="ltr">{data.customer.phone || '—'}</td></tr>
-                  <tr><th>Adresse</th><td colSpan="3" dir="auto">{data.customer.address || '—'}</td></tr>
-                  <tr><th>Période</th><td colSpan="3">{periodLabel}</td></tr>
+                  <tr>
+                    <th>{t('common.customer')}</th>
+                    <td><b dir="auto">{data.customer.name}</b></td>
+                    <th>{t('common.phone')}</th>
+                    <td dir="ltr">{data.customer.phone || '—'}</td>
+                  </tr>
+                  <tr><th>{t('common.address')}</th><td colSpan="3" dir="auto">{data.customer.address || '—'}</td></tr>
+                  <tr><th>{t('common.period')}</th><td colSpan="3">{periodLabel}</td></tr>
                 </tbody>
               </table>
 
               <div className="statement-totals">
                 <div className="clients-card stat-card">
-                  <div className="stat-label">Total débit</div>
-                  <div className={`stat-value ${balanceClass(1)}`}>{fmt(periodTotals.debit)} MRU</div>
+                  <div className="stat-label">{t('clientAccount.totalDebit')}</div>
+                  <div className={`stat-value ${balanceClass(1)}`}>{fmt(periodTotals.debit)} {t('common.currency')}</div>
                 </div>
                 <div className="clients-card stat-card">
-                  <div className="stat-label">Total crédit</div>
-                  <div className={`stat-value ${balanceClass(-1)}`}>{fmt(periodTotals.credit)} MRU</div>
+                  <div className="stat-label">{t('clientAccount.totalCredit')}</div>
+                  <div className={`stat-value ${balanceClass(-1)}`}>{fmt(periodTotals.credit)} {t('common.currency')}</div>
                 </div>
                 <div className="clients-card stat-card">
-                  <div className="stat-label">Solde fin de période</div>
-                  <div className={`stat-value ${balanceClass(closingBalance)}`}>{fmt(closingBalance)} MRU</div>
+                  <div className="stat-label">{t('clientAccount.debitEnd')}</div>
+                  <div className={`stat-value ${balanceClass(closingBalance)}`}>{fmt(closingBalance)} {t('common.currency')}</div>
                 </div>
                 <div className="clients-card stat-card">
-                  <div className="stat-label">Solde actuel</div>
-                  <div className={`stat-value ${balanceClass(data.totals.balance)}`}>{fmt(data.totals.balance)} MRU</div>
+                  <div className="stat-label">{t('clientAccount.currentBalance')}</div>
+                  <div className={`stat-value ${balanceClass(data.totals.balance)}`}>{fmt(data.totals.balance)} {t('common.currency')}</div>
                 </div>
               </div>
 
               <table className="table statement-table">
                 <thead>
                   <tr>
-                    <th>Date</th>
-                    <th>Désignation</th>
-                    <th>Débit</th>
-                    <th>Crédit</th>
-                    <th>Solde</th>
+                    <th>{t('common.date')}</th>
+                    <th>{t('common.description')}</th>
+                    <th>{t('common.debit')}</th>
+                    <th>{t('common.credit')}</th>
+                    <th>{t('common.balance')}</th>
                   </tr>
                 </thead>
                 <tbody>
                   {data.entries.length === 0 && (
-                    <tr><td colSpan="5" className="muted" style={{ textAlign: 'center', padding: 16 }}>Aucune écriture sur cette période</td></tr>
+                    <tr><td colSpan="5" className="muted" style={{ textAlign: 'center', padding: 16 }}>{t('clientAccount.noEntriesPeriod')}</td></tr>
                   )}
                   {data.entries.map((entry, idx) => (
                     <tr key={`${entry.kind}-${entry.id ?? 'opening'}-${idx}`} className={entry.kind === 'opening' ? 'account-opening-row' : ''}>
@@ -418,16 +435,16 @@ export default function ClientAccount() {
               </table>
 
               <div className="statement-grand-total">
-                <span>Solde final de la période</span>
-                <b className={balanceClass(closingBalance)}>{fmt(closingBalance)} MRU</b>
+                <span>{t('clientAccount.finalBalance')}</span>
+                <b className={balanceClass(closingBalance)}>{fmt(closingBalance)} {t('common.currency')}</b>
               </div>
 
               <div className="statement-sign">
-                <span>Cachet de l’agence</span>
-                <span>Signature</span>
+                <span>{t('clientAccount.stamp')}</span>
+                <span>{t('clientAccount.signature')}</span>
               </div>
               <div className="statement-footer">
-                {company.nameFr || company.nameAr} — Relevé généré par le système de comptabilité douanière
+                {t('clientAccount.footer', { company: companyName(company) })}
               </div>
             </div>
           </div>

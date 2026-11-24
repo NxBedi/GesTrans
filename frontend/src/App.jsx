@@ -1,5 +1,6 @@
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { useAuth } from './contexts/AuthContext.jsx';
+import { useI18n } from './i18n/I18nContext.jsx';
 import Login from './pages/Login.jsx';
 import Layout from './components/Layout.jsx';
 import Dashboard from './pages/Dashboard.jsx';
@@ -30,8 +31,9 @@ import AccountantAudit from './pages/AccountantAudit.jsx';
 
 export default function App() {
   const { user, loading } = useAuth();
+  const { t } = useI18n();
 
-  if (loading) return <div className="page">جارٍ التحميل...</div>;
+  if (loading) return <div className="page">{t('common.loading')}</div>;
 
   const isManager = user?.role === 'manager';
   const isAccountant = user?.role === 'accountant';
