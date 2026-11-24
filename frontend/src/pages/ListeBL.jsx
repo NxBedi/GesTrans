@@ -1,11 +1,12 @@
-import { useEffect, useMemo, useState } from 'react';
+import { Fragment, useEffect, useMemo, useState } from 'react';
 import { useAuth } from '../contexts/AuthContext.jsx';
-import { containersApi, customersApi, invoiceTypesApi } from '../utils/api.js';
+import { containersApi, customersApi, invoiceTypesApi, usersApi } from '../utils/api.js';
 import { refreshDashboard } from '../utils/refresh.js';
 import { fmt } from './Dashboard.jsx';
 import { useCompany } from '../contexts/CompanyContext.jsx';
 import CompanyLogo from '../components/CompanyLogo.jsx';
 import ChargesAPayer, { exportCsv } from '../components/ChargesAPayer.jsx';
+import ContainerAccessPanel, { AccessSummary, EmployeePicker } from '../components/ContainerAccess.jsx';
 
 const COLUMNS = [
   { key: 'bl_number', label: 'Numero BL', align: 'left' },
@@ -19,7 +20,7 @@ const COLUMNS = [
 ];
 
 function empty() {
-  return { bl_number: '', container_number: '', customer_id: '', registration_date: '', quantity: '', contents: '', container_type: '40', free_storage_days: 15 };
+  return { bl_number: '', container_number: '', customer_id: '', registration_date: '', quantity: '', contents: '', container_type: '40', free_storage_days: 15, employee_ids: [] };
 }
 
 function today() {
@@ -72,6 +73,13 @@ export default function ListeBL() {
 
   const [chgRow, setChgRow] = useState(null);
   const [chgDetail, setChgDetail] = useState(null);
+  const [employees, setEmployees] = useState([]);
+  const [accessFilter, setAccessFilter] = useState('all');
+  const [selected, setSelected] = useState([]);
+  const [accessRow, setAccessRow] = useState(null);
+  const [bulk, setBulk] = useState(null);
+  const [bulkBusy, setBulkBusy] = useState(false);
+  const [bulkErr, setBulkErr] = useState('');
   const [liqInvForm, setLiqInvForm] = useState({ invoice_number: '', entry_date: today(), amount: '' });
   const [liqAll, setLiqAll] = useState({ records: [], count: 0, total: 0 });
   const [liqInvErr, setLiqInvErr] = useState('');
@@ -91,6 +99,12 @@ export default function ListeBL() {
     load();
     customersApi.list().then(setCustomers).catch(() => {});
     invoiceTypesApi.list().then(setTypes).catch(() => {});
+    // the visibility picker is manager-only and only lists active employees
+    if (isManager) {
+      usersApi.list()
+        .then((list) => setEmployees(list.filter((u) => u.role === 'employee' && u.is_active)))
+        .catch(() => {});
+    }
   }, []);
 
   const filtered = useMemo(() => {
@@ -100,6 +114,13 @@ export default function ListeBL() {
       list = list.filter((r) =>
         [r.bl_number, r.container_number, r.customer_name].some((v) => String(v || '').toLowerCase().includes(s))
       );
+    }
+    // manager visibility filter (employees never see this control)
+    if (isManager && accessFilter === 'hidden') {
+      list = list.filter((r) => !(r.access_list || []).length);
+    } else if (isManager && accessFilter.startsWith('emp:')) {
+      const eid = Number(accessFilter.slice(4));
+      list = list.filter((r) => (r.access_list || []).some((a) => a.id === eid));
     }
     const col = COLUMNS.find((c) => c.key === sortKey);
     const type = col?.type || 'text';
@@ -111,7 +132,7 @@ export default function ListeBL() {
       return sortDir === 'asc' ? r : -r;
     });
     return sorted;
-  }, [rows, q, sortKey, sortDir]);
+  }, [rows, q, sortKey, sortDir, isManager, accessFilter]);
 
   const toggleSort = (key) => {
     if (sortKey === key) setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
@@ -152,6 +173,7 @@ export default function ListeBL() {
       contents: row.contents,
       container_type: row.container_type || '40',
       free_storage_days: row.free_storage_days ?? 15,
+      employee_ids: (row.access_list || []).map((a) => a.id),
     });
     setMsg('');
     loadCustomers();
@@ -170,6 +192,50 @@ export default function ListeBL() {
       load();
       refreshDashboard();
     } catch (err) { setMsg(err.message); }
+  };
+
+  // ---- bulk selection / visibility (manager only) ----
+  const toggleSelect = (id) => {
+    setSelected((s) => (s.includes(id) ? s.filter((x) => x !== id) : [...s, id]));
+  };
+
+  const selectableIds = filtered.map((r) => r.id);
+  const allSelected = selectableIds.length > 0 && selectableIds.every((id) => selected.includes(id));
+
+  const toggleSelectAll = () => {
+    setSelected(allSelected ? [] : selectableIds);
+  };
+
+  const openBulk = (action) => {
+    setBulkErr('');
+    setBulk({
+      action,
+      ids: [...selected],
+      // revoking defaults to every employee, so "remove from everyone" is one click
+      employeeIds: action === 'revoke' ? employees.map((e) => e.id) : [],
+    });
+  };
+
+  const submitBulk = async () => {
+    if (!bulk?.employeeIds.length) { setBulkErr('Choisissez au moins un employé'); return; }
+    setBulkBusy(true);
+    setBulkErr('');
+    try {
+      await containersApi.bulkAccess(bulk.ids, bulk.employeeIds, bulk.action);
+      setBulk(null);
+      setSelected([]);
+      load();
+      refreshDashboard();
+    } catch (e) { setBulkErr(e.message); }
+    finally { setBulkBusy(false); }
+  };
+
+  const applyAccessUpdate = (updated) => {
+    setRows((rs) => rs.map((r) => (r.id === updated.id
+      ? { ...r, access_list: updated.access_list, access_count: updated.access_count }
+      : r)));
+    setChgDetail((d) => (d && d.container.id === updated.id ? { ...d, container: updated } : d));
+    setAccessRow((r) => (r && r.id === updated.id ? updated : r));
   };
 
   const remove = async (row) => {
@@ -290,19 +356,55 @@ export default function ListeBL() {
         </div>
       </div>
 
-      <div className="grid grid-2" style={{ marginBottom: 16 }}>
-        <input className="input" placeholder="Recherche (BL, conteneur, client)…" value={q} onChange={(e) => setQ(e.target.value)} />
+      <div style={{ display: 'flex', gap: 10, marginBottom: 16, flexWrap: 'wrap', alignItems: 'center' }}>
+        <input className="input" style={{ flex: '1 1 260px' }} placeholder="Recherche (BL, conteneur, client)…" value={q} onChange={(e) => setQ(e.target.value)} />
+        {isManager && (
+          <select
+            className="select"
+            style={{ maxWidth: 300 }}
+            title="Filtrer par visibilité"
+            value={accessFilter}
+            onChange={(e) => setAccessFilter(e.target.value)}
+          >
+            <option value="all">Toutes les BL</option>
+            <option value="hidden">Masquées pour tous</option>
+            {employees.map((emp) => (
+              <option key={emp.id} value={`emp:${emp.id}`}>Visible pour : {emp.full_name}</option>
+            ))}
+          </select>
+        )}
         <div className="muted" style={{ display: 'flex', alignItems: 'center' }}>{loading ? 'Chargement…' : `${filtered.length} BL`}</div>
       </div>
+
+      {isManager && selected.length > 0 && (
+        <div className="bulk-bar">
+          <b>{selected.length} BL sélectionnée(s)</b>
+          <div className="bulk-bar-actions">
+            <button className="btn btn-primary btn-sm" onClick={() => openBulk('grant')}>👥 Attribuer à des employés</button>
+            <button className="btn btn-danger btn-sm" onClick={() => openBulk('revoke')}>🚫 Retirer la visibilité</button>
+            <button className="btn btn-outline btn-sm" onClick={() => setSelected([])}>Annuler</button>
+          </div>
+        </div>
+      )}
 
       <div className="card" style={{ padding: 0, overflow: 'auto' }}>
         <table className="table" style={{ minWidth: 1150 }}>
           <thead>
             <tr>
-              {COLUMNS.map((c) => (
-                <th key={c.key} className="sortable" style={{ textAlign: c.align }} onClick={() => toggleSort(c.key)}>
-                  {c.label} {sortKey === c.key ? <span style={{ color: '#2563eb' }}>{sortDir === 'asc' ? '▲' : '▼'}</span> : ''}
+              {isManager && (
+                <th style={{ width: 36, textAlign: 'center' }}>
+                  <input type="checkbox" checked={allSelected} onChange={toggleSelectAll} title="Tout sélectionner" />
                 </th>
+              )}
+              {COLUMNS.map((c) => (
+                <Fragment key={c.key}>
+                  <th className="sortable" style={{ textAlign: c.align }} onClick={() => toggleSort(c.key)}>
+                    {c.label} {sortKey === c.key ? <span style={{ color: '#2563eb' }}>{sortDir === 'asc' ? '▲' : '▼'}</span> : ''}
+                  </th>
+                  {isManager && c.key === 'customer_name' && (
+                    <th style={{ textAlign: 'center' }}>Visible pour</th>
+                  )}
+                </Fragment>
               ))}
               {isManager && <th style={{ textAlign: 'center' }}>Liquidation</th>}
               <th style={{ textAlign: 'center' }}>Charges a payer</th>
@@ -311,13 +413,30 @@ export default function ListeBL() {
           </thead>
           <tbody>
             {filtered.length === 0 && !loading && (
-              <tr><td colSpan={COLUMNS.length + (isManager ? 1 : 0) + 2} className="muted" style={{ textAlign: 'center', padding: 20 }}>Aucun BL en cours</td></tr>
+              <tr><td colSpan={COLUMNS.length + (isManager ? 3 : 0) + 2} className="muted" style={{ textAlign: 'center', padding: 20 }}>Aucun BL en cours</td></tr>
             )}
             {filtered.map((r) => (
-              <tr key={r.id}>
+              <tr key={r.id} className={selected.includes(r.id) ? 'row-selected' : undefined}>
+                {isManager && (
+                  <td style={{ textAlign: 'center' }}>
+                    <input type="checkbox" checked={selected.includes(r.id)} onChange={() => toggleSelect(r.id)} />
+                  </td>
+                )}
                 <td className="nowrap"><b style={{ fontWeight: 800 }}>{r.bl_number}</b></td>
                 <td>{r.container_number}</td>
                 <td style={{ direction: 'rtl', textAlign: 'right' }}><b>{r.customer_name}</b></td>
+                {isManager && (
+                  <td style={{ textAlign: 'center' }}>
+                    <button
+                      type="button"
+                      className="access-cell"
+                      onClick={() => setAccessRow(r)}
+                      title="Modifier la visibilité"
+                    >
+                      <AccessSummary accessList={r.access_list} />
+                    </button>
+                  </td>
+                )}
                 <td className="nowrap">{fmtDate(r.registration_date)}</td>
                 <td>{r.quantity ?? '—'}</td>
                 <td style={{ direction: 'rtl', textAlign: 'right' }}>{r.contents || '—'}</td>
@@ -342,6 +461,9 @@ export default function ListeBL() {
                   <button className="btn btn-success btn-sm" onClick={() => openCharges(r)}>Charges</button>
                 </td>
                 <td className="nowrap" style={{ textAlign: 'center' }}>
+                  {isManager && (
+                    <button className="btn btn-outline btn-sm" title="Visibilité" onClick={() => setAccessRow(r)}>👥</button>
+                  )}{' '}
                   <button className="btn btn-outline btn-sm" title="Modifier" onClick={() => openEdit(r)}>✏️</button>{' '}
                   {isManager && ['registered', 'processing'].includes(r.status) && (
                     <button className="btn btn-danger btn-sm" title="Fermer (جاهزة للتسعير)" onClick={() => closeContainer(r)}>🔒</button>
@@ -400,6 +522,19 @@ export default function ListeBL() {
                 <label className="form-label">Free franchise (jours) <span className="muted" style={{ fontWeight: 400 }}>— أيام التخزين المجاني</span></label>
                 <input className="input" type="number" min="0" max="365" value={form.free_storage_days} onChange={setF('free_storage_days')} />
               </div>
+              {isManager && (
+                <div className="form-row" style={{ marginBottom: 0, gridColumn: '1 / -1' }}>
+                  <label className="form-label">Visible pour les employés</label>
+                  <EmployeePicker
+                    employees={employees}
+                    value={form.employee_ids || []}
+                    onChange={(ids) => setForm((f) => ({ ...f, employee_ids: ids }))}
+                  />
+                  <div className="muted" style={{ fontSize: 12, marginTop: 6 }}>
+                    Sans sélection, le BL reste masqué pour tous les employés.
+                  </div>
+                </div>
+              )}
               {msg && <div className="form-error" style={{ gridColumn: '1 / -1' }}>{msg}</div>}
               <div className="modal-actions" style={{ gridColumn: '1 / -1', justifyContent: 'space-between' }}>
                 <button className="btn btn-outline btn-sm" type="button" onClick={() => setShowAdd(false)}>Fermer</button>
@@ -422,6 +557,14 @@ export default function ListeBL() {
               invoices={chgDetail.invoices}
               onSaved={reloadChg}
             />
+
+            {isManager && (
+              <ContainerAccessPanel
+                container={chgDetail.container}
+                employees={employees}
+                onSaved={applyAccessUpdate}
+              />
+            )}
 
             {isManager && (() => {
               const liqInv = chgDetail.invoices.find((i) => String(i.type_name).trim().toLowerCase() === 'liquidation');
@@ -633,6 +776,56 @@ export default function ListeBL() {
 
             <div className="print-footer muted">
               فاتورة التكلفة صادرة رسمياً من نظام {company.nameAr} — تُمثّل المصاريف المستحقة على هذه الحاوية
+            </div>
+          </div>
+        </div>
+      )}
+
+      {accessRow && (
+        <div className="modal-overlay" onClick={() => setAccessRow(null)}>
+          <div className="modal" style={{ maxWidth: 520 }} onClick={(e) => e.stopPropagation()}>
+            <div className="modal-title">Visibilité — {accessRow.bl_number}</div>
+            <div className="modal-sub">Choisir les employés qui peuvent voir ce BL.</div>
+            <ContainerAccessPanel
+              container={accessRow}
+              employees={employees}
+              onSaved={applyAccessUpdate}
+            />
+            <div className="modal-actions">
+              <button className="btn btn-outline btn-sm" onClick={() => setAccessRow(null)}>Fermer</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {bulk && (
+        <div className="modal-overlay" onClick={() => setBulk(null)}>
+          <div className="modal" style={{ maxWidth: 520 }} onClick={(e) => e.stopPropagation()}>
+            <div className="modal-title">
+              {bulk.action === 'grant'
+                ? `Attribuer ${bulk.ids.length} BL à des employés`
+                : `Retirer la visibilité de ${bulk.ids.length} BL`}
+            </div>
+            <div className="modal-sub">
+              {bulk.action === 'grant'
+                ? 'Les employés sélectionnés verront ces BL.'
+                : 'Les employés sélectionnés ne verront plus ces BL.'}
+            </div>
+            <EmployeePicker
+              employees={employees}
+              value={bulk.employeeIds}
+              onChange={(ids) => setBulk((b) => ({ ...b, employeeIds: ids }))}
+            />
+            {bulkErr && <div className="form-error">{bulkErr}</div>}
+            <div className="modal-actions">
+              <button className="btn btn-outline btn-sm" onClick={() => setBulk(null)}>Annuler</button>
+              <button
+                className={`btn btn-sm ${bulk.action === 'revoke' ? 'btn-danger' : 'btn-success'}`}
+                disabled={bulkBusy}
+                onClick={submitBulk}
+              >
+                {bulkBusy ? '...' : 'Appliquer'}
+              </button>
             </div>
           </div>
         </div>

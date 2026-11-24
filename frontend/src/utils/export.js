@@ -59,7 +59,7 @@ export function exportPdf(title, headers, rows, sub = '') {
   doc.setFontSize(9);
   doc.setFont('helvetica', 'bold');
   doc.text(`تاريخ الإصدار: ${dateStr}`, 12, endY);
-  doc.text(`Tel : ${c.tel} — NIF : ${c.nifRcAgrement}`, pageW - 12, endY, { align: 'ltr' });
+  doc.text(`Tel : ${c.tel} — NIF : ${c.nifRcAgrement}`, pageW - 12, endY, { align: 'right' });
   doc.text(`أُنشئ بواسطة نظام المحاسبة الجمركية ${c.form}`, pageW / 2, endY + 25, { align: 'center' });
 
   doc.save(`${title.replace(/\s+/g, '_')}.pdf`);
@@ -157,7 +157,7 @@ export async function exportStatementPdf(customer, entries, period, totals) {
   doc.setFontSize(9);
   doc.setFont('helvetica', 'normal');
   doc.text(`تاريخ الإصدار: ${dateStr}`, 12, 285);
-  doc.text(`Tel : ${c.tel} — NIF : ${c.nifRcAgrement}`, pageW - 12, 285, { align: 'ltr' });
+  doc.text(`Tel : ${c.tel} — NIF : ${c.nifRcAgrement}`, pageW - 12, 285, { align: 'right' });
   doc.text(`أُنشئ بواسطة نظام المحاسبة الجمركية ${c.form}`, pageW / 2, 292, { align: 'center' });
 
   doc.save(`كشف_حساب_${customer.name}.pdf`);

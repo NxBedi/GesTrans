@@ -145,21 +145,21 @@ router.get('/:id/statement', allowRoles('manager'), async (req, res) => {
   const entries = [];
   for (const r of oldDebtRows.rows) {
     entries.push({
-      date: String(r.debt_date).slice(0, 10), seq: 1, kind: 'old_debt',
+      id: r.id, date: String(r.debt_date).slice(0, 10), seq: 1, kind: 'old_debt',
       description: 'Old Debt / دين قديم — رصيد سابق',
       reference: r.notes || null, debit: Number(r.amount), credit: null,
     });
   }
   for (const r of invRows.rows) {
     entries.push({
-      date: String(r.sale_date).slice(0, 10), seq: 2, kind: 'invoice',
+      id: r.cid, date: String(r.sale_date).slice(0, 10), seq: 2, kind: 'invoice',
       description: `فاتورة حاوية — BL ${r.bl_number}${r.container_number ? ` (${r.container_number})` : ''}`,
       reference: null, debit: Number(r.final_price), credit: null,
     });
   }
   for (const r of payRows.rows) {
     entries.push({
-      date: String(r.payment_date).slice(0, 10), seq: 3, kind: 'payment',
+      id: r.id, date: String(r.payment_date).slice(0, 10), seq: 3, kind: 'payment',
       description: 'دفعة / إيداع', reference: r.notes || null,
       debit: null, credit: Number(r.amount),
     });
@@ -190,7 +190,7 @@ router.get('/:id/statement', allowRoles('manager'), async (req, res) => {
     period: { from: f, to: t, opening: periodOpening },
     totals: { opening_balance: openingBalance, old_debts: oldTotal, total_billed: billed, total_paid: paid, balance },
     entries: filtered.map((e) => ({
-      date: e.date, kind: e.kind, description: e.description, reference: e.reference,
+      id: e.id ?? null, date: e.date, kind: e.kind, description: e.description, reference: e.reference,
       debit: e.debit == null ? null : Number(e.debit),
       credit: e.credit == null ? null : Number(e.credit),
       balance: Number(e.balance),

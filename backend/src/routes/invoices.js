@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { query, pool } from '../db.js';
 import { authRequired } from '../middleware/auth.js';
 import { hasPermission, PERM } from '../middleware/permissions.js';
+import { canAccessContainer } from '../containerAccess.js';
 
 const router = Router();
 router.use(authRequired);
@@ -21,6 +22,10 @@ router.post('/:containerId/invoices', async (req, res) => {
   // verify container exists
   const cRes = await query('SELECT id, status FROM containers WHERE id = $1', [containerId]);
   if (!cRes.rows.length) return res.status(404).json({ error: 'الحاوية غير موجودة' });
+  // hidden containers answer exactly like missing ones (no existence leak)
+  if (!(await canAccessContainer(req.user, containerId))) {
+    return res.status(404).json({ error: 'الحاوية غير موجودة' });
+  }
 
   // registered/in-progress containers can receive expenses; closed cannot (manager may still adjust).
   // Once priced, invoices are frozen so the pricing snapshot stays accurate.
@@ -97,6 +102,10 @@ router.get('/:containerId/invoices', async (req, res) => {
   const canSeeAll = req.user.role === 'manager' || hasPermission(req.user.role, PERM.FIN_INVOICES_VIEW);
   const cRes = await query('SELECT id, status FROM containers WHERE id = $1', [containerId]);
   if (!cRes.rows.length) return res.status(404).json({ error: 'الحاوية غير موجودة' });
+  // hidden containers answer exactly like missing ones (no existence leak)
+  if (!(await canAccessContainer(req.user, containerId))) {
+    return res.status(404).json({ error: 'الحاوية غير موجودة' });
+  }
   if (!canSeeAll && !['registered', 'processing'].includes(cRes.rows[0].status)) {
     return res.status(403).json({ error: 'الحاوية غير متاحة' });
   }

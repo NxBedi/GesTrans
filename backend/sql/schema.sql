@@ -87,6 +87,21 @@ ALTER TABLE containers DROP COLUMN IF EXISTS liquidation_paid_amount;
 ALTER TABLE containers DROP COLUMN IF EXISTS liquidation_paid;
 ALTER TABLE containers DROP COLUMN IF EXISTS liquidation_paid_at;
 
+-- ---------- container visibility (إظهار الحاويات للموظفين) ----------
+-- جدول ربط فقط (لا تكرار للحاويات): كل صف = موظف واحد يرى حاوية واحدة.
+-- المدير والمحاسب يريان كل الحاويات دائماً؛ القيد يخص دور 'employee' وحده.
+-- الحاوية الجديدة مخفية افتراضياً (لا صفوف = لا أحد من الموظفين يراها).
+CREATE TABLE IF NOT EXISTS container_access (
+  id          SERIAL PRIMARY KEY,
+  container_id INT NOT NULL REFERENCES containers(id) ON DELETE CASCADE,
+  employee_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  granted_by  INT REFERENCES users(id) ON DELETE SET NULL,
+  granted_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (container_id, employee_id)
+);
+CREATE INDEX IF NOT EXISTS idx_container_access_employee ON container_access(employee_id);
+CREATE INDEX IF NOT EXISTS idx_container_access_container ON container_access(container_id);
+
 -- ---------- invoice types ----------
 CREATE TABLE IF NOT EXISTS invoice_types (
   id          SERIAL PRIMARY KEY,

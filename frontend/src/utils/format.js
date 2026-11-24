@@ -55,3 +55,20 @@ export const KIND_COLORS = {
 };
 
 export const ROLE_LABELS = { manager: 'مدير', employee: 'موظف' };
+
+/**
+ * One balance rule for every screen:
+ *   debit  (positive)  -> the client owes money  -> red
+ *   credit (negative)  -> the client has credit  -> green
+ *   zero                -> neutral
+ */
+export function balanceTone(value) {
+  const n = Number(value || 0);
+  if (n > 0) return 'debit';
+  if (n < 0) return 'credit';
+  return 'zero';
+}
+
+export function balanceClass(value) {
+  return `balance-${balanceTone(value)}`;
+}

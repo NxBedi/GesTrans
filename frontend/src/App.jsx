@@ -9,6 +9,7 @@ import ListeBL from './pages/ListeBL.jsx';
 import PricingQueue from './pages/PricingQueue.jsx';
 import FinishedContainers from './pages/FinishedContainers.jsx';
 import Customers from './pages/Customers.jsx';
+import ClientAccount from './pages/ClientAccount.jsx';
 import Users from './pages/Users.jsx';
 import InvoiceTypes from './pages/InvoiceTypes.jsx';
 import Reports from './pages/Reports.jsx';
@@ -73,6 +74,9 @@ export default function App() {
         <Route path="/containers" element={user && !isAccountant ? <ListeBL /> : <Navigate to="/" />} />
         <Route path="/my-expenses" element={user && !isAccountant ? <MyExpenses /> : <Navigate to="/" />} />
         <Route path="/customers" element={user && !isAccountant ? <Customers /> : <Navigate to="/" />} />
+        {/*French client list + one-click account statement (manager only: financial data)*/}
+        <Route path="/clients" element={managerOnly(<Customers />)} />
+        <Route path="/clients/:id/compte" element={managerOnly(<ClientAccount />)} />
       </Route>
       <Route path="*" element={<Navigate to="/" />} />
     </Routes>

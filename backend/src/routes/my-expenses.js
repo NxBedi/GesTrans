@@ -19,7 +19,9 @@ router.get('/', async (req, res) => {
   let employeeCond = '';
   if (!canSeeAll) {
     params.push(req.user.id);
-    employeeCond = `AND i.entered_by = $${params.length}`;
+    // employees only see invoices of containers that are visible to them
+    employeeCond = `AND i.entered_by = $${params.length}
+      AND EXISTS (SELECT 1 FROM container_access ca WHERE ca.container_id = c.id AND ca.employee_id = $${params.length})`;
   } else if (employee_id && /^\d+$/.test(String(employee_id))) {
     params.push(Number(employee_id));
     employeeCond = `AND i.entered_by = $${params.length}`;

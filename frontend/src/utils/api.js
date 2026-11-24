@@ -84,6 +84,14 @@ export const containersApi = {
   setPricing: (id, data) => api(`/containers/${id}/pricing`, { method: 'POST', body: JSON.stringify(data) }),
   removePricing: (id) => api(`/containers/${id}/pricing`, { method: 'DELETE' }),
   reopen: (id) => api(`/containers/${id}/reopen`, { method: 'POST' }),
+  setAccess: (id, employeeIds) => api(`/containers/${id}/access`, {
+    method: 'PUT',
+    body: JSON.stringify({ employee_ids: employeeIds }),
+  }),
+  bulkAccess: (containerIds, employeeIds, action) => api('/containers/access/bulk', {
+    method: 'POST',
+    body: JSON.stringify({ container_ids: containerIds, employee_ids: employeeIds, action }),
+  }),
 };
 
 export const generalExpensesApi = {

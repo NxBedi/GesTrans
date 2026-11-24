@@ -1,6 +1,10 @@
 ﻿import { Router } from 'express';
 import { query, pool } from '../db.js';
 import { authRequired, allowRoles } from '../middleware/auth.js';
+import {
+  accessCondition, canAccessContainer, isRestricted, stripAccessMeta,
+  replaceContainerAccess, bulkContainerAccess,
+} from '../containerAccess.js';
 
 const router = Router();
 router.use(authRequired);
@@ -9,6 +13,11 @@ export const CONTAINER_SELECT = `
   SELECT c.*, cu.name AS customer_name,
          u.full_name AS registered_by_name,
          COALESCE(c.free_storage_days, 15) AS free_storage_days,
+         COALESCE((SELECT json_agg(json_build_object('id', au.id, 'name', au.full_name) ORDER BY au.full_name)
+                   FROM container_access ca
+                   JOIN users au ON au.id = ca.employee_id
+                   WHERE ca.container_id = c.id), '[]'::json) AS access_list,
+         (SELECT COUNT(*)::int FROM container_access ca WHERE ca.container_id = c.id) AS access_count,
          CASE WHEN CURRENT_DATE < c.registration_date
               THEN (c.registration_date - CURRENT_DATE)::int
               ELSE 0 END AS days_until_arrival,
@@ -44,7 +53,7 @@ export function getContainerTotals(invoices) {
 
 // GET /api/containers - work queue: registered & in-progress containers (قائمة Liste BL / الحاويات الجارية)
 router.get('/', async (req, res) => {
-  const { q, customer_id, all } = req.query;
+  const { q, customer_id, all, access, access_employee } = req.query;
   const where = [];
   const params = [];
   if (all !== '1' && all !== 'true') {
@@ -59,13 +68,28 @@ router.get('/', async (req, res) => {
     params.push(Number(customer_id));
     where.push(`c.customer_id = $${params.length}`);
   }
+
+  // employees only ever see containers granted to them (manager/accountant: no filter)
+  const scope = accessCondition(req.user, 'c', params);
+  if (scope) where.push(scope);
+
+  // manager list filters: hidden from everyone / visible to one employee
+  if (!isRestricted(req.user)) {
+    if (access === 'hidden') {
+      where.push('NOT EXISTS (SELECT 1 FROM container_access x WHERE x.container_id = c.id)');
+    } else if (access_employee && /^\d+$/.test(String(access_employee))) {
+      params.push(Number(access_employee));
+      where.push(`EXISTS (SELECT 1 FROM container_access x WHERE x.container_id = c.id AND x.employee_id = $${params.length})`);
+    }
+  }
+
   const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
   const { rows } = await query(`
     ${CONTAINER_SELECT}
     ${whereSql}
     ORDER BY c.registration_date DESC, c.id DESC
   `, params);
-  res.json(rows);
+  res.json(rows.map((r) => stripAccessMeta(r, req.user)));
 });
 
 // GET /api/containers/finished - priced containers = الحسابات (posted to client account)
@@ -133,6 +157,38 @@ router.get('/liquidations', allowRoles('manager'), async (req, res) => {
   });
 });
 
+// PUT /api/containers/:id/access - manager: replace the full visibility set
+// (add employees, remove some, or clear all in one call)
+router.put('/:id/access', allowRoles('manager'), async (req, res) => {
+  const id = Number(req.params.id);
+  const { employee_ids } = req.body || {};
+  if (employee_ids !== undefined && !Array.isArray(employee_ids)) {
+    return res.status(400).json({ error: 'قائمة الموظفين غير صالحة' });
+  }
+  const { rows } = await query('SELECT id FROM containers WHERE id = $1', [id]);
+  if (!rows.length) return res.status(404).json({ error: 'الحاوية غير موجودة' });
+
+  const result = await replaceContainerAccess(id, employee_ids || [], req.user);
+  const { rows: updated } = await query(`${CONTAINER_SELECT} WHERE c.id = $1`, [id]);
+  res.json({ ...result, container: updated[0] });
+});
+
+// POST /api/containers/access/bulk - manager: multi-select grant / revoke
+router.post('/access/bulk', allowRoles('manager'), async (req, res) => {
+  const { container_ids, employee_ids, action } = req.body || {};
+  if (!['grant', 'revoke'].includes(action)) {
+    return res.status(400).json({ error: 'إجراء غير صالح' });
+  }
+  if (!Array.isArray(container_ids) || !container_ids.length) {
+    return res.status(400).json({ error: 'اختر حاوية واحدة على الأقل' });
+  }
+  if (!Array.isArray(employee_ids) || !employee_ids.length) {
+    return res.status(400).json({ error: 'اختر موظفاً واحداً على الأقل' });
+  }
+  const result = await bulkContainerAccess(container_ids, employee_ids, action, req.user);
+  res.json(result);
+});
+
 // GET /api/containers/:id - detail with invoices, totals, pricing
 router.get('/:id', async (req, res) => {
   const id = Number(req.params.id);
@@ -141,8 +197,12 @@ router.get('/:id', async (req, res) => {
   if (!rows.length || (req.user.role !== 'manager' && !['registered', 'processing'].includes(rows[0].status))) {
     return res.status(404).json({ error: 'الحاوية غير موجودة' });
   }
+  // hidden containers answer exactly like missing ones (no existence leak)
+  if (!(await canAccessContainer(req.user, id))) {
+    return res.status(404).json({ error: 'الحاوية غير موجودة' });
+  }
 
-  const container = rows[0];
+  const container = stripAccessMeta(rows[0], req.user);
   const invResult = await query(`
     SELECT i.*, t.name AS type_name, t.allowed_role, u.full_name AS entered_by_name
     FROM invoices i
@@ -165,9 +225,12 @@ router.get('/:id', async (req, res) => {
 
 // POST /api/containers - employee & manager can register
 router.post('/', async (req, res) => {
-  const { bl_number, registration_date, customer_id, container_number, container_type, contents, quantity, free_storage_days } = req.body || {};
+  const { bl_number, registration_date, customer_id, container_number, container_type, contents, quantity, free_storage_days, employee_ids } = req.body || {};
   if (!bl_number || !registration_date || !customer_id || !container_number || !contents) {
     return res.status(400).json({ error: 'جميع الحقول مطلوبة (BL، التاريخ، الزبون، رقم الحاوية، المحتوى)' });
+  }
+  if (employee_ids !== undefined && !Array.isArray(employee_ids)) {
+    return res.status(400).json({ error: 'قائمة الموظفين غير صالحة' });
   }
   const type = String(container_type || '40').trim();
   if (!['20', '40'].includes(type)) {
@@ -187,7 +250,17 @@ router.post('/', async (req, res) => {
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'registered', $9) RETURNING *`,
       [bl_number.trim(), registration_date, Number(customer_id), container_number.trim(), type, contents.trim(), qty, freeDays, req.user.id]
     );
-    res.status(201).json(rows[0]);
+    const created = rows[0];
+    // New containers are hidden from everyone by default. Two exceptions:
+    //  - an employee always sees the container they just registered;
+    //  - the manager may assign employees right away from the create form.
+    if (req.user.role === 'employee') {
+      await replaceContainerAccess(created.id, [req.user.id], req.user);
+    } else if (req.user.role === 'manager' && Array.isArray(employee_ids) && employee_ids.length) {
+      await replaceContainerAccess(created.id, employee_ids, req.user);
+    }
+    const { rows: full } = await query(`${CONTAINER_SELECT} WHERE c.id = $1`, [created.id]);
+    res.status(201).json(stripAccessMeta(full[0] || created, req.user));
   } catch (e) {
     if (e.code === '23505') return res.status(409).json({ error: 'رقم BL مسجل مسبقاً' });
     if (e.code === '23503') return res.status(400).json({ error: 'الزبون غير موجود' });
@@ -200,13 +273,20 @@ router.put('/:id', async (req, res) => {
   const id = Number(req.params.id);
   const { rows } = await query('SELECT * FROM containers WHERE id = $1', [id]);
   if (!rows.length) return res.status(404).json({ error: 'الحاوية غير موجودة' });
+  // hidden containers answer exactly like missing ones (no existence leak)
+  if (!(await canAccessContainer(req.user, id))) {
+    return res.status(404).json({ error: 'الحاوية غير موجودة' });
+  }
   const cur = rows[0];
 
   if (req.user.role !== 'manager' && cur.status !== 'processing') {
     return res.status(403).json({ error: 'لا يمكن تعديل حاوية اكتملت معالجتها' });
   }
 
-const { bl_number, registration_date, customer_id, container_number, container_type, contents, quantity, free_storage_days, status } = req.body || {};
+const { bl_number, registration_date, customer_id, container_number, container_type, contents, quantity, free_storage_days, status, employee_ids } = req.body || {};
+  if (employee_ids !== undefined && !Array.isArray(employee_ids)) {
+    return res.status(400).json({ error: 'قائمة الموظفين غير صالحة' });
+  }
   // partial updates keep the current value for any field not sent
   const nextBl = bl_number !== undefined ? String(bl_number).trim() : cur.bl_number;
   const nextDate = registration_date !== undefined ? String(registration_date).trim() : cur.registration_date;
@@ -250,7 +330,12 @@ const freeDays = free_storage_days !== undefined && free_storage_days !== '' ? N
        WHERE id = $10 RETURNING *`,
       [nextBl, nextDate, nextCustomerId, nextCtn, type, nextContents, qty, freeDays, nextStatus, id]
     );
-    res.json(result.rows[0]);
+    // visibility is manager-only; employees can never change it
+    if (req.user.role === 'manager' && employee_ids !== undefined) {
+      await replaceContainerAccess(id, employee_ids, req.user);
+    }
+    const { rows: full } = await query(`${CONTAINER_SELECT} WHERE c.id = $1`, [id]);
+    res.json(stripAccessMeta(full[0] || result.rows[0], req.user));
   } catch (e) {
     if (e.code === '23505') return res.status(409).json({ error: 'رقم BL مسجل مسبقاً' });
     throw e;
