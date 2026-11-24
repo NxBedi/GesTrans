@@ -1,8 +1,10 @@
 import { createContext, useContext, useState, useCallback, useRef } from 'react';
+import { useI18n } from '../i18n/I18nContext.jsx';
 
 const FeedbackContext = createContext(null);
 
 export function FeedbackProvider({ children }) {
+  const { t } = useI18n();
   const [toasts, setToasts] = useState([]);
   const [confirmState, setConfirmState] = useState(null);
   const confirmId = useRef(0);
@@ -28,17 +30,17 @@ export function FeedbackProvider({ children }) {
       {confirmState && (
         <div className="modal-overlay" onClick={() => { confirmState.resolve(false); closeConfirm(); }}>
           <div className="modal" style={{ maxWidth: 420 }} onClick={(e) => e.stopPropagation()}>
-            <div className="modal-title" style={{ marginBottom: 8 }}>{confirmState.title || 'تأكيد العملية'}</div>
+            <div className="modal-title" style={{ marginBottom: 8 }}>{confirmState.title || t('common.confirmTitle')}</div>
             <p style={{ fontSize: 14, color: '#334155', lineHeight: 1.7, whiteSpace: 'pre-wrap' }}>{confirmState.message}</p>
             <div className="modal-actions">
               <button className="btn btn-outline" onClick={() => { confirmState.resolve(false); closeConfirm(); }}>
-                {confirmState.cancelLabel || 'إلغاء'}
+                {confirmState.cancelLabel || t('common.cancel')}
               </button>
               <button
                 className={`btn ${confirmState.danger ? 'btn-danger' : 'btn-primary'}`}
                 onClick={() => { confirmState.resolve(true); closeConfirm(); }}
               >
-                {confirmState.okLabel || 'تأكيد'}
+                {confirmState.okLabel || t('common.confirm')}
               </button>
             </div>
           </div>

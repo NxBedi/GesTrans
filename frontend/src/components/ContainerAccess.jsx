@@ -1,13 +1,15 @@
 import { useEffect, useMemo, useState } from 'react';
+import { useI18n } from '../i18n/I18nContext.jsx';
 import { containersApi } from '../utils/api.js';
 
 // Compact "Visibilité" cell for the manager's BL list.
 export function AccessSummary({ accessList, max = 2 }) {
+  const { t } = useI18n();
   const list = accessList || [];
-  if (!list.length) return <span className="badge badge-access-hidden">Masquée</span>;
+  if (!list.length) return <span className="badge badge-access-hidden">{t('containers.accessHidden')}</span>;
   const shown = list.slice(0, max);
   return (
-    <span className="access-chips" title={list.map((a) => a.name).join('، ')}>
+    <span className="access-chips" title={list.map((a) => a.name).join(t('common.listSeparator'))}>
       {shown.map((a) => <span key={a.id} className="access-chip">{a.name}</span>)}
       {list.length > max && <span className="access-chip access-chip-more">+{list.length - max}</span>}
     </span>
@@ -16,10 +18,11 @@ export function AccessSummary({ accessList, max = 2 }) {
 
 // Multi-select checklist of registered employees.
 export function EmployeePicker({ employees, value, onChange }) {
+  const { t } = useI18n();
   const selected = useMemo(() => new Set(value || []), [value]);
 
   if (!employees.length) {
-    return <div className="muted access-empty">Aucun employé enregistré</div>;
+    return <div className="muted access-empty">{t('containers.accessNoEmployees')}</div>;
   }
 
   const toggle = (id) => {
@@ -32,10 +35,10 @@ export function EmployeePicker({ employees, value, onChange }) {
   return (
     <div className="access-picker">
       <div className="access-picker-head">
-        <span className="muted">{selected.size} employé(s) sélectionné(s)</span>
+        <span className="muted">{t('containers.accessSelectedCount', { count: selected.size })}</span>
         {selected.size > 0 && (
           <button type="button" className="btn btn-outline btn-sm" onClick={() => onChange([])}>
-            Tout effacer
+            {t('containers.accessClear')}
           </button>
         )}
       </div>
@@ -53,6 +56,7 @@ export function EmployeePicker({ employees, value, onChange }) {
 
 // Manager-only panel: change who can see one container (add / remove / clear).
 export default function ContainerAccessPanel({ container, employees, onSaved }) {
+  const { t } = useI18n();
   const [value, setValue] = useState(() => (container.access_list || []).map((a) => a.id));
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
@@ -74,7 +78,7 @@ export default function ContainerAccessPanel({ container, employees, onSaved }) 
     setMsg('');
     try {
       const res = await containersApi.setAccess(container.id, value);
-      setMsg('Visibilité enregistrée');
+      setMsg(t('containers.accessSaved'));
       if (res?.container) onSaved?.(res.container);
     } catch (e) {
       setErr(e.message);
@@ -86,17 +90,17 @@ export default function ContainerAccessPanel({ container, employees, onSaved }) 
   return (
     <div className="access-panel">
       <div className="access-panel-head">
-        <b>Visible pour les employés</b> <span className="muted">— إظهار للموظفين</span>
+        <b>{t('containers.accessTitle')}</b> <span className="muted">— {t('containers.accessColumn')}</span>
       </div>
       <div className="muted" style={{ fontSize: 12.5, marginBottom: 8 }}>
-        Le gestionnaire voit toujours toutes les BL. Un employé ne voit que les BL qui lui sont attribuées.
+        {t('containers.accessHint')}
       </div>
       <EmployeePicker employees={employees} value={value} onChange={setValue} />
       {err && <div className="form-error">{err}</div>}
       {msg && <div className="form-success">{msg}</div>}
       <div className="access-panel-actions">
         <button className="btn btn-success btn-sm" disabled={busy || !dirty} onClick={save}>
-          {busy ? '...' : '💾 Enregistrer la visibilité'}
+          {busy ? '...' : t('containers.accessSave')}
         </button>
       </div>
     </div>

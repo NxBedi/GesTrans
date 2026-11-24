@@ -1,29 +1,30 @@
 /** أدوات مشتركة لواجهة المحاسب */
+import { kindLabel, t } from '../i18n/runtime.js';
 
 export const PAYMENT_METHODS = [
-  { value: 'cash', label: 'نقدي — يخصم من الصندوق' },
-  { value: 'bank', label: 'حوالة / بنك — لا يلمس الصندوق' },
-  { value: 'credit', label: 'آجل (غير مدفوع) — لا يلمس الصندوق' },
+  { value: 'cash', get label() { return t('accountant.paymentCash'); } },
+  { value: 'bank', get label() { return t('accountant.paymentBank'); } },
+  { value: 'credit', get label() { return t('accountant.paymentCredit'); } },
 ];
 
 export const PAYMENT_METHOD_SHORT = {
-  cash: 'نقدي',
-  bank: 'حوالة',
-  credit: 'آجل',
+  get cash() { return t('accountant.methodCash'); },
+  get bank() { return t('accountant.methodBank'); },
+  get credit() { return t('accountant.methodCredit'); },
 };
 
 /** أنواع حركات الصندوق كما تُرجعها الواجهة الخلفية */
 export const MOVEMENT_KIND_LABELS = {
-  adjust: 'تسوية الصندوق',
-  capital: 'رأس المال',
-  collection: 'تحصيل من زبون',
-  cost: 'تكلفة حاوية',
-  expense: 'مصروف مؤسسة',
-  salary: 'رواتب',
+  get adjust() { return kindLabel('adjust'); },
+  get capital() { return kindLabel('capital'); },
+  get collection() { return kindLabel('collection'); },
+  get cost() { return kindLabel('cost'); },
+  get expense() { return kindLabel('expense'); },
+  get salary() { return kindLabel('salary'); },
 };
 
 export function movementKindLabel(kind) {
-  return MOVEMENT_KIND_LABELS[kind] || kind;
+  return kindLabel(kind);
 }
 
 export function paymentMethodLabel(value) {

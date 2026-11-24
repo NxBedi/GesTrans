@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react';
 import { accountantApi, generalExpensesApi, reportsApi, salaryApi } from '../utils/api.js';
-import { fmt } from './Dashboard.jsx';
+import { useI18n } from '../i18n/I18nContext.jsx';
 import { downloadCsv } from '../utils/accountant.js';
 
 export default function AccountantReports() {
+  const { t, fmt } = useI18n();
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
   const [month, setMonth] = useState(new Date().toISOString().slice(0, 7));
@@ -31,11 +32,11 @@ export default function AccountantReports() {
 
   const exportExpenses = () => {
     downloadCsv(
-      'تقرير-مصاريف-المؤسسة',
+      `${t('pdf.reportSheet')}-${t('reports.companyExpenses')}`,
       [
-        { key: 'category', label: 'البند' },
-        { key: 'count', label: 'عدد العمليات' },
-        { key: 'total', label: 'الإجمالي' },
+        { key: 'category', label: t('generalExpenses.colCategory') },
+        { key: 'count', label: t('generalExpenses.colOperations') },
+        { key: 'total', label: t('common.total') },
       ],
       expSummary?.by_category || []
     );
@@ -43,12 +44,12 @@ export default function AccountantReports() {
 
   const exportWages = () => {
     downloadCsv(
-      'تقرير-الرواتب',
+      `${t('pdf.reportSheet')}-${t('salary.title')}`,
       [
-        { key: 'full_name', label: 'الموظف' },
-        { key: 'salary', label: 'الراتب' },
-        { key: 'paid', label: 'المدفوع' },
-        { key: 'remaining', label: 'المتبقي' },
+        { key: 'full_name', label: t('salary.col.employee') },
+        { key: 'salary', label: t('users.salary') },
+        { key: 'paid', label: t('salary.col.paid') },
+        { key: 'remaining', label: t('salary.col.remaining') },
       ],
       employees
     );
@@ -56,12 +57,12 @@ export default function AccountantReports() {
 
   const exportByType = () => {
     downloadCsv(
-      'تقرير-مصاريف-حسب-النوع',
+      `${t('pdf.reportSheet')}-${t('reports.colInvoiceType')}`,
       [
-        { key: 'type_name', label: 'النوع' },
-        { key: 'invoice_count', label: 'عدد الفواتير' },
-        { key: 'total', label: 'الإجمالي' },
-        { key: 'container_count', label: 'عدد الحاويات' },
+        { key: 'type_name', label: t('common.type') },
+        { key: 'invoice_count', label: t('reports.invoiceCount') },
+        { key: 'total', label: t('common.total') },
+        { key: 'container_count', label: t('reports.colContainerCount') },
       ],
       typeSummary
     );
@@ -71,22 +72,22 @@ export default function AccountantReports() {
     <div className="page">
       <div className="toolbar">
         <div>
-          <h1 className="page-title">التقارير المالية</h1>
-          <p className="page-sub">تقارير المصاريف والرواتب ونوع الفواتير — مع تصدير CSV</p>
+          <h1 className="page-title">{t('nav.accountantReports')}</h1>
+          <p className="page-sub">{t('reports.subtitle')}</p>
         </div>
       </div>
 
       <div className="grid grid-3" style={{ marginBottom: 16 }}>
         <div className="form-row" style={{ marginBottom: 0 }}>
-          <label className="form-label">من تاريخ</label>
+          <label className="form-label">{t('reports.dateFrom')}</label>
           <input className="input" type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} />
         </div>
         <div className="form-row" style={{ marginBottom: 0 }}>
-          <label className="form-label">إلى تاريخ</label>
+          <label className="form-label">{t('reports.dateTo')}</label>
           <input className="input" type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} />
         </div>
         <div className="form-row" style={{ marginBottom: 0 }}>
-          <label className="form-label">شهر الرواتب</label>
+          <label className="form-label">{t('salary.month')}</label>
           <input className="input" type="month" value={month} onChange={(e) => setMonth(e.target.value)} />
         </div>
       </div>
@@ -94,33 +95,33 @@ export default function AccountantReports() {
       <div className="grid grid-4" style={{ marginBottom: 16 }}>
         <div className="card stat-card">
           <div className="stat-value">{fmt(dash?.expenses?.total)}</div>
-          <div className="stat-label">إجمالي المصاريف (كل الفترات)</div>
+          <div className="stat-label">{t('generalExpenses.totalExpenses')} ({t('common.periodAll')})</div>
         </div>
         <div className="card stat-card">
           <div className="stat-value">{fmt(expSummary?.total)}</div>
-          <div className="stat-label">مصاريف المؤسسة (حسب الفلتر)</div>
+          <div className="stat-label">{t('reports.companyExpenses')} ({t('common.filter')})</div>
         </div>
         <div className="card stat-card">
           <div className="stat-value">{fmt(workerSummary?.total)}</div>
-          <div className="stat-label">مصاريف العمال (حسب الفلتر)</div>
+          <div className="stat-label">{t('accountant.workerExpenses')} ({t('common.filter')})</div>
         </div>
         <div className="card stat-card">
           <div className="stat-value" style={{ color: '#b45309' }}>{fmt(dash?.unpaid?.total)}</div>
-          <div className="stat-label">التزامات غير مدفوعة</div>
+          <div className="stat-label">{t('accountant.unpaidObligations')}</div>
         </div>
       </div>
 
       <div className="grid grid-2" style={{ marginBottom: 16 }}>
         <div className="card" style={{ padding: 0, overflow: 'auto' }}>
           <div className="card-header" style={{ padding: '16px 18px', marginBottom: 0 }}>
-            <div className="card-title">🏢 مصاريف المؤسسة حسب البند</div>
+            <div className="card-title">{t('generalExpenses.byCategoryTitle')}</div>
             <button className="btn btn-outline btn-sm" onClick={exportExpenses}>⬇️ CSV</button>
           </div>
           <table className="table">
-            <thead><tr><th>البند</th><th>العدد</th><th>الإجمالي</th></tr></thead>
+            <thead><tr><th>{t('generalExpenses.colCategory')}</th><th>{t('common.count')}</th><th>{t('common.total')}</th></tr></thead>
             <tbody>
               {(!expSummary?.by_category || expSummary.by_category.length === 0) && !loading && (
-                <tr><td colSpan="3" className="muted" style={{ textAlign: 'center', padding: 20 }}>لا توجد بيانات</td></tr>
+                <tr><td colSpan="3" className="muted" style={{ textAlign: 'center', padding: 20 }}>{t('common.noData')}</td></tr>
               )}
               {expSummary?.by_category?.map((c) => (
                 <tr key={c.category}>
@@ -135,14 +136,14 @@ export default function AccountantReports() {
 
         <div className="card" style={{ padding: 0, overflow: 'auto' }}>
           <div className="card-header" style={{ padding: '16px 18px', marginBottom: 0 }}>
-            <div className="card-title">💵 كشف الرواتب — {month}</div>
+            <div className="card-title">{t('accountant.employeesTitle', { month })}</div>
             <button className="btn btn-outline btn-sm" onClick={exportWages}>⬇️ CSV</button>
           </div>
           <table className="table">
-            <thead><tr><th>الموظف</th><th>الراتب</th><th>المدفوع</th><th>المتبقي</th></tr></thead>
+            <thead><tr><th>{t('salary.col.employee')}</th><th>{t('users.salary')}</th><th>{t('salary.col.paid')}</th><th>{t('salary.col.remaining')}</th></tr></thead>
             <tbody>
               {employees.length === 0 && !loading && (
-                <tr><td colSpan="4" className="muted" style={{ textAlign: 'center', padding: 20 }}>لا يوجد موظفون</td></tr>
+                <tr><td colSpan="4" className="muted" style={{ textAlign: 'center', padding: 20 }}>{t('accountant.noEmployees')}</td></tr>
               )}
               {employees.map((e) => (
                 <tr key={e.id}>
@@ -159,24 +160,24 @@ export default function AccountantReports() {
 
       <div className="card" style={{ padding: 0, overflow: 'auto' }}>
         <div className="card-header" style={{ padding: '16px 18px', marginBottom: 0 }}>
-          <div className="card-title">🧾 مصاريف العمال حسب نوع الفاتورة</div>
+          <div className="card-title">{t('reports.tabInvoiceTypes')}</div>
           <button className="btn btn-outline btn-sm" onClick={exportByType}>⬇️ CSV</button>
         </div>
         <table className="table">
-          <thead><tr><th>النوع</th><th>عدد الفواتير</th><th>عدد الحاويات</th><th>الإجمالي</th></tr></thead>
+          <thead><tr><th>{t('common.type')}</th><th>{t('reports.invoiceCount')}</th><th>{t('reports.colContainerCount')}</th><th>{t('common.total')}</th></tr></thead>
           <tbody>
             {typeSummary.length === 0 && !loading && (
-              <tr><td colSpan="4" className="muted" style={{ textAlign: 'center', padding: 20 }}>لا توجد بيانات</td></tr>
+              <tr><td colSpan="4" className="muted" style={{ textAlign: 'center', padding: 20 }}>{t('common.noData')}</td></tr>
             )}
-            {typeSummary.map((t) => (
-              <tr key={t.type_id}>
+            {typeSummary.map((row) => (
+              <tr key={row.type_id}>
                 <td>
-                  {t.type_name}
-                  {t.allowed_role === 'manager' && <span className="badge badge-priced" style={{ marginInlineStart: 6 }}>جمارك</span>}
+                  {row.type_name}
+                  {row.allowed_role === 'manager' && <span className="badge badge-priced" style={{ marginInlineStart: 6 }}>{t('expenses.badgeCustoms')}</span>}
                 </td>
-                <td>{t.invoice_count}</td>
-                <td>{t.container_count}</td>
-                <td className="nowrap"><b>{fmt(t.total)}</b></td>
+                <td>{row.invoice_count}</td>
+                <td>{row.container_count}</td>
+                <td className="nowrap"><b>{fmt(row.total)}</b></td>
               </tr>
             ))}
           </tbody>

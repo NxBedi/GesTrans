@@ -1,34 +1,57 @@
-// formatting / label helpers shared across the redesigned pages
+// Formatting / label helpers shared across the pages.
+// All helpers read the active language at call time, so they automatically
+// follow the language switcher (and the language used for printed documents).
+import {
+  fmt,
+  money,
+  dmy,
+  dlong,
+  dtm,
+  t,
+  getLang,
+  getDir,
+  getLocale,
+  statusLabel,
+  debtLabel,
+  kindLabel,
+  roleLabel,
+  companyName,
+} from '../i18n/runtime.js';
 
-export function fmt(n) {
-  return new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 2 }).format(Number(n || 0));
-}
+export {
+  fmt,
+  money,
+  dmy,
+  dlong,
+  dtm,
+  t,
+  getLang,
+  getDir,
+  getLocale,
+  statusLabel,
+  debtLabel,
+  kindLabel,
+  roleLabel,
+  companyName,
+};
 
-export function money(n) {
-  return Number.isFinite(Number(n)) ? `${fmt(n)} MRU` : '—';
-}
-
-export function dmy(iso) {
-  if (iso == null || iso === '') return '—';
-  const s = String(iso).slice(0, 10);
-  const [y, m, dd] = s.split('-');
-  return dd && m && y ? `${dd}/${m}/${y}` : s;
-}
-
+// Legacy label maps kept for pages that still import them; values are resolved
+// from the dictionaries on access so they follow the active language.
 export const STATUS_LABELS = {
-  registered: 'مسجلة',
-  processing: 'قيد تسجيل الفواتير',
-  closed: 'جاهزة للتسعير',
-  priced: 'تم التسعير',
+  get registered() { return statusLabel('registered'); },
+  get processing() { return statusLabel('processing'); },
+  get closed() { return statusLabel('closed'); },
+  get priced() { return statusLabel('priced'); },
 };
 
 export const DEBT_LABELS = {
-  paid: 'مدفوع',
-  partial: 'جزئي',
-  due: 'مستحق',
-  overdue: 'متأخر',
+  get paid() { return debtLabel('paid'); },
+  get partial() { return debtLabel('partial'); },
+  get due() { return debtLabel('due'); },
+  get overdue() { return debtLabel('overdue'); },
 };
 
+// badge class names stay language independent
 export const DEBT_BADGE = {
   paid: 'badge-paid',
   partial: 'badge-partial',
@@ -37,12 +60,12 @@ export const DEBT_BADGE = {
 };
 
 export const KIND_LABELS = {
-  adjust: 'تسوية الصندوق',
-  capital: 'رأس المال',
-  collection: 'تحصيل من زبون',
-  cost: 'تكاليف حاوية',
-  expense: 'مصروف مؤسسة',
-  salary: 'رواتب الموظفين',
+  get adjust() { return kindLabel('adjust'); },
+  get capital() { return kindLabel('capital'); },
+  get collection() { return kindLabel('collection'); },
+  get cost() { return kindLabel('cost'); },
+  get expense() { return kindLabel('expense'); },
+  get salary() { return kindLabel('salary'); },
 };
 
 export const KIND_COLORS = {
@@ -54,7 +77,10 @@ export const KIND_COLORS = {
   salary: '#d946ef',
 };
 
-export const ROLE_LABELS = { manager: 'مدير', employee: 'موظف' };
+export const ROLE_LABELS = {
+  get manager() { return roleLabel('manager'); },
+  get employee() { return roleLabel('employee'); },
+};
 
 /**
  * One balance rule for every screen:

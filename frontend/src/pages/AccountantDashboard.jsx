@@ -2,20 +2,10 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { accountantApi, financialApi } from '../utils/api.js';
 import { onDashboardRefresh } from '../utils/refresh.js';
-import { fmt } from './Dashboard.jsx';
-import { movementKindLabel } from '../utils/accountant.js';
-
-const MODULES = [
-  { to: '/accountant/wages', ico: '💵', label: 'الرواتب', desc: 'تسجيل دفع الرواتب ومتابعة المتبقي على كل موظف' },
-  { to: '/accountant/expenses', ico: '🏢', label: 'مصاريف المؤسسة', desc: 'تسجيل مصاريف المؤسسة (إيجار، كهرباء، قرطاسية…)' },
-  { to: '/accountant/worker-expenses', ico: '💸', label: 'مصاريف العمال', desc: 'قراءة مصاريف العمال اليومية المحصّلة' },
-  { to: '/accountant/invoices', ico: '🧾', label: 'فواتير الحاويات', desc: 'عرض فواتير الحاويات وتفاصيلها' },
-  { to: '/accountant/cashbox', ico: '🏦', label: 'الصندوق', desc: 'نقدية الصندوق وحركاته (قراءة فقط)' },
-  { to: '/accountant/reports', ico: '📊', label: 'التقارير المالية', desc: 'تقارير المصاريف والرواتب مع التصدير' },
-  { to: '/accountant/audit', ico: '🕒', label: 'سجل التدقيق', desc: 'تتبّع كل عملية مالية: من نفّذها ومتى' },
-];
+import { useI18n } from '../i18n/I18nContext.jsx';
 
 export default function AccountantDashboard() {
+  const { t, fmt, dmy, kindLabel, roleLabel } = useI18n();
   const [dash, setDash] = useState(null);
   const [movements, setMovements] = useState([]);
   const [err, setErr] = useState('');
@@ -31,16 +21,26 @@ export default function AccountantDashboard() {
     return off;
   }, []);
 
+  const modules = [
+    { to: '/accountant/wages', ico: '💵', label: t('nav.accountantWages'), desc: t('salary.subtitle') },
+    { to: '/accountant/expenses', ico: '🏢', label: t('accountant.institutionExpenses'), desc: t('generalExpenses.subtitle') },
+    { to: '/accountant/worker-expenses', ico: '💸', label: t('accountant.workerExpenses'), desc: t('expenses.subtitle', { role: roleLabel('employee') }) },
+    { to: '/accountant/invoices', ico: '🧾', label: t('nav.accountantInvoices'), desc: t('expenses.allInvoicesTitle') },
+    { to: '/accountant/cashbox', ico: '🏦', label: t('nav.accountantCashbox'), desc: t('financial.cashBox') },
+    { to: '/accountant/reports', ico: '📊', label: t('nav.accountantReports'), desc: t('reports.subtitle') },
+    { to: '/accountant/audit', ico: '🕒', label: t('nav.accountantAudit'), desc: t('accountant.auditSubtitle') },
+  ];
+
   const kpis = dash
     ? [
-        { ico: '🏦', lbl: 'نقدية الصندوق', val: fmt(dash.cash_in_hand), sub: 'الحركات النقدية غير المعكوسة فقط', color: '#16a34a', to: '/accountant/cashbox' },
-        { ico: '📅', lbl: 'مصروف اليوم', val: fmt(dash.today.expense), sub: `مداخيل ${fmt(dash.today.income)} — صافي ${fmt(dash.today.net)}`, color: '#dc2626', to: '/accountant/reports' },
-        { ico: '📆', lbl: 'مصروف الشهر', val: fmt(dash.month.expense), sub: `مداخيل ${fmt(dash.month.income)} — صافي ${fmt(dash.month.net)}`, color: '#d97706', to: '/accountant/reports' },
-        { ico: '💸', lbl: 'إجمالي المصاريف', val: fmt(dash.expenses.total), sub: `مؤسسة ${fmt(dash.expenses.institution)} + رواتب ${fmt(dash.expenses.salaries)}`, color: '#7c3aed', to: '/accountant/expenses' },
-        { ico: '🏦', lbl: 'غير نقدي (لا يمس الصندوق)', val: fmt(dash.expenses.institution_non_cash + dash.expenses.salaries_non_cash), sub: 'حوالات وآجل', color: '#0284c7', to: '/accountant/expenses' },
-        { ico: '⏳', lbl: 'التزامات غير مدفوعة', val: fmt(dash.unpaid.total), sub: 'آجل لم يُسدَّد بعد', color: '#b45309', to: '/accountant/reports' },
-        { ico: '👷', lbl: 'رواتب متبقية', val: fmt(dash.wages.remaining), sub: `${dash.wages.employees_count} موظف — راتب الشهر ${fmt(dash.wages.payroll_month)}`, color: '#2563eb', to: '/accountant/wages' },
-        { ico: '🧾', lbl: 'مصاريف العمال (الشهر)', val: fmt(dash.worker_expenses.total), sub: `${dash.worker_expenses.count} فاتورة`, color: '#0891b2', to: '/accountant/worker-expenses' },
+        { ico: '🏦', lbl: t('dashboard.cash'), val: fmt(dash.cash_in_hand), sub: t('accountant.cashOnly'), color: '#16a34a', to: '/accountant/cashbox' },
+        { ico: '📅', lbl: t('dashboard.todayExpense'), val: fmt(dash.today.expense), sub: `${t('dashboard.todayIncome')} ${fmt(dash.today.income)} — ${t('dashboard.todayNet')} ${fmt(dash.today.net)}`, color: '#dc2626', to: '/accountant/reports' },
+        { ico: '📆', lbl: t('accountant.monthlyExpense'), val: fmt(dash.month.expense), sub: `${t('dashboard.todayIncome')} ${fmt(dash.month.income)} — ${t('dashboard.todayNet')} ${fmt(dash.month.net)}`, color: '#d97706', to: '/accountant/reports' },
+        { ico: '💸', lbl: t('generalExpenses.totalExpenses'), val: fmt(dash.expenses.total), sub: t('dashboard.expensesBreakdown', { institution: fmt(dash.expenses.institution), salaries: fmt(dash.expenses.salaries) }), color: '#7c3aed', to: '/accountant/expenses' },
+        { ico: '🏦', lbl: t('accountant.nonCashNote'), val: fmt(dash.expenses.institution_non_cash + dash.expenses.salaries_non_cash), sub: t('accountant.bankAndCredit'), color: '#0284c7', to: '/accountant/expenses' },
+        { ico: '⏳', lbl: t('accountant.unpaidObligations'), val: fmt(dash.unpaid.total), sub: t('accountant.unpaidCredit'), color: '#b45309', to: '/accountant/reports' },
+        { ico: '👷', lbl: t('accountant.salariesRemaining'), val: fmt(dash.wages.remaining), sub: `${t('accountant.employeeCount', { count: dash.wages.employees_count })} — ${t('salary.col.monthlySalary')} ${fmt(dash.wages.payroll_month)}`, color: '#2563eb', to: '/accountant/wages' },
+        { ico: '🧾', lbl: t('accountant.workerExpenses'), val: fmt(dash.worker_expenses.total), sub: t('accountant.invoiceCount', { count: dash.worker_expenses.count }), color: '#0891b2', to: '/accountant/worker-expenses' },
       ]
     : [];
 
@@ -48,8 +48,8 @@ export default function AccountantDashboard() {
     <div className="page">
       <div className="toolbar">
         <div>
-          <h1 className="page-title">لوحة المحاسب</h1>
-          <p className="page-sub">نظرة مالية شاملة: الصندوق، الرواتب، مصاريف المؤسسة والعمال — مع كل الأرقام مشتقّة من سجلّات النظام نفسها</p>
+          <h1 className="page-title">{t('nav.accountantDashboard')}</h1>
+          <p className="page-sub">{t('accountant.dashboardSubtitle')}</p>
         </div>
       </div>
 
@@ -73,13 +73,12 @@ export default function AccountantDashboard() {
 
           {dash.reversed && (dash.reversed.expenses > 0 || dash.reversed.salaries > 0) && (
             <div className="card" style={{ marginBottom: 18, padding: 14, borderInlineStart: '4px solid #d97706' }}>
-              <b>تنبيه:</b> يوجد {dash.reversed.expenses} مصروف و {dash.reversed.salaries} حركة راتب معكوسة.
-              العمليات المعكوسة لا تُحتسب في الصندوق، لكنها محفوظة في السجل التاريخي.
+              <b>{t('accountant.notice')}</b> {t('accountant.reverseNotice', { expenses: dash.reversed.expenses, salaries: dash.reversed.salaries })} {t('accountant.reverseHistoryNote')}
             </div>
           )}
 
           <div className="grid grid-4" style={{ marginBottom: 18 }}>
-            {MODULES.map((m) => (
+            {modules.map((m) => (
               <Link key={m.to} to={m.to} className="kpi-card kpi-link">
                 <div className="kpi-icon">{m.ico}</div>
                 <div className="kpi-body">
@@ -92,19 +91,19 @@ export default function AccountantDashboard() {
 
           <div className="card" style={{ padding: 0, overflow: 'auto' }}>
             <div className="card-header" style={{ padding: '16px 18px', marginBottom: 0 }}>
-              <div className="card-title">آخر حركات الصندوق</div>
-              <Link to="/accountant/cashbox" className="btn btn-outline btn-sm">كل الحركات</Link>
+              <div className="card-title">{t('financial.movementsTitle')}</div>
+              <Link to="/accountant/cashbox" className="btn btn-outline btn-sm">{t('common.viewAll')}</Link>
             </div>
             <table className="table">
-              <thead><tr><th>التاريخ</th><th>النوع</th><th>البيان</th><th>المرجع</th><th>المبلغ</th></tr></thead>
+              <thead><tr><th>{t('common.date')}</th><th>{t('common.type')}</th><th>{t('common.description')}</th><th>{t('accountant.reference')}</th><th>{t('common.amount')}</th></tr></thead>
               <tbody>
                 {movements.length === 0 && (
-                  <tr><td colSpan="5" className="muted" style={{ textAlign: 'center', padding: 20 }}>لا توجد حركات</td></tr>
+                  <tr><td colSpan="5" className="muted" style={{ textAlign: 'center', padding: 20 }}>{t('financial.noMovements')}</td></tr>
                 )}
                 {movements.map((m, i) => (
                   <tr key={i}>
-                    <td className="nowrap">{m.d}</td>
-                    <td><span className="badge badge-processing">{movementKindLabel(m.kind)}</span></td>
+                    <td className="nowrap">{dmy(m.d)}</td>
+                    <td><span className="badge badge-processing">{kindLabel(m.kind)}</span></td>
                     <td>{m.descr}</td>
                     <td className="muted">{m.ref || '—'}</td>
                     <td className="nowrap" style={{ fontWeight: 800, color: Number(m.amount) >= 0 ? '#16a34a' : '#dc2626' }}>

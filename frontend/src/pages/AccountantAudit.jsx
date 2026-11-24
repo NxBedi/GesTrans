@@ -1,20 +1,24 @@
 import { useEffect, useState } from 'react';
 import { accountantApi } from '../utils/api.js';
+import { useI18n } from '../i18n/I18nContext.jsx';
 import { downloadCsv } from '../utils/accountant.js';
 
-const ACTION_LABELS = {
-  create: 'إنشاء',
-  update: 'تعديل',
-  reverse: 'عكس',
-  delete: 'حذف',
+const ACTION_KEYS = {
+  create: 'common.add',
+  update: 'common.edit',
+  reverse: 'accountant.reverse',
+  delete: 'common.delete',
 };
 
-const ENTITY_LABELS = {
-  general_expense: 'مصروف مؤسسة',
-  salary_transaction: 'حركة راتب',
+const ENTITY_KEYS = {
+  general_expense: 'kinds.expense',
+  salary_transaction: 'kinds.salary',
 };
 
 export default function AccountantAudit() {
+  const { t, dtm, roleLabel } = useI18n();
+  const actionLabels = Object.fromEntries(Object.entries(ACTION_KEYS).map(([k, key]) => [k, t(key)]));
+  const entityLabels = Object.fromEntries(Object.entries(ENTITY_KEYS).map(([k, key]) => [k, t(key)]));
   const [rows, setRows] = useState([]);
   const [action, setAction] = useState('');
   const [entityType, setEntityType] = useState('');
@@ -39,15 +43,15 @@ export default function AccountantAudit() {
 
   const exportCsv = () => {
     downloadCsv(
-      'سجل-التدقيق',
+      t('nav.accountantAudit'),
       [
-        { key: 'created_at', label: 'التاريخ والوقت' },
-        { key: 'actor_name', label: 'المستخدم' },
-        { key: 'actor_role', label: 'الدور' },
-        { key: 'action', label: 'العملية', get: (r) => ACTION_LABELS[r.action] || r.action },
-        { key: 'entity_type', label: 'نوع السجل', get: (r) => ENTITY_LABELS[r.entity_type] || r.entity_type },
-        { key: 'entity_id', label: 'رقم السجل' },
-        { key: 'details', label: 'التفاصيل', get: (r) => (r.details ? JSON.stringify(r.details) : '') },
+        { key: 'created_at', label: t('accountant.dateTime') },
+        { key: 'actor_name', label: t('auth.username') },
+        { key: 'actor_role', label: t('users.role') },
+        { key: 'action', label: t('common.actions'), get: (r) => actionLabels[r.action] || r.action },
+        { key: 'entity_type', label: t('common.type'), get: (r) => entityLabels[r.entity_type] || r.entity_type },
+        { key: 'entity_id', label: t('accountant.recordNumber') },
+        { key: 'details', label: t('common.details'), get: (r) => (r.details ? JSON.stringify(r.details) : '') },
       ],
       rows
     );
@@ -57,63 +61,63 @@ export default function AccountantAudit() {
     <div className="page">
       <div className="toolbar">
         <div>
-          <h1 className="page-title">سجل التدقيق</h1>
-          <p className="page-sub">تتبّع كامل لكل عملية مالية: من نفّذها، متى، وبمبلغ — لا يمكن تعديل سجل التدقيق</p>
+          <h1 className="page-title">{t('nav.accountantAudit')}</h1>
+          <p className="page-sub">{t('accountant.auditSubtitle')}</p>
         </div>
-        <button className="btn btn-outline" onClick={exportCsv}>⬇️ تصدير CSV</button>
+        <button className="btn btn-outline" onClick={exportCsv}>⬇️ {t('common.export')} CSV</button>
       </div>
 
       <div className="grid grid-4" style={{ marginBottom: 16 }}>
         <div className="form-row" style={{ marginBottom: 0 }}>
-          <label className="form-label">العملية</label>
+          <label className="form-label">{t('common.actions')}</label>
           <select className="select" value={action} onChange={(e) => setAction(e.target.value)}>
-            <option value="">الكل</option>
-            <option value="create">إنشاء</option>
-            <option value="update">تعديل</option>
-            <option value="reverse">عكس</option>
+            <option value="">{t('common.all')}</option>
+            <option value="create">{t('common.add')}</option>
+            <option value="update">{t('common.edit')}</option>
+            <option value="reverse">{t('accountant.reverse')}</option>
           </select>
         </div>
         <div className="form-row" style={{ marginBottom: 0 }}>
-          <label className="form-label">نوع السجل</label>
+          <label className="form-label">{t('common.type')}</label>
           <select className="select" value={entityType} onChange={(e) => setEntityType(e.target.value)}>
-            <option value="">الكل</option>
-            <option value="general_expense">مصروف مؤسسة</option>
-            <option value="salary_transaction">حركة راتب</option>
+            <option value="">{t('common.all')}</option>
+            <option value="general_expense">{t('kinds.expense')}</option>
+            <option value="salary_transaction">{t('kinds.salary')}</option>
           </select>
         </div>
         <div className="form-row" style={{ marginBottom: 0 }}>
-          <label className="form-label">من تاريخ</label>
+          <label className="form-label">{t('reports.dateFrom')}</label>
           <input className="input" type="date" value={from} onChange={(e) => setFrom(e.target.value)} />
         </div>
         <div className="form-row" style={{ marginBottom: 0 }}>
-          <label className="form-label">إلى تاريخ</label>
+          <label className="form-label">{t('reports.dateTo')}</label>
           <input className="input" type="date" value={to} onChange={(e) => setTo(e.target.value)} />
         </div>
       </div>
 
       <div className="card" style={{ padding: 0, overflow: 'auto' }}>
         <div className="card-header" style={{ padding: '16px 20px', marginBottom: 0 }}>
-          <div className="card-title">🕒 العمليات المسجّلة ({rows.length})</div>
+          <div className="card-title">{t('generalExpenses.operationsCount')} ({rows.length})</div>
         </div>
         <table className="table">
           <thead>
-            <tr><th>الوقت</th><th>المستخدم</th><th>الدور</th><th>العملية</th><th>السجل</th><th>التفاصيل</th></tr>
+            <tr><th>{t('accountant.dateTime')}</th><th>{t('auth.username')}</th><th>{t('users.role')}</th><th>{t('common.actions')}</th><th>{t('accountant.recordNumber')}</th><th>{t('common.details')}</th></tr>
           </thead>
           <tbody>
             {rows.length === 0 && !loading && (
-              <tr><td colSpan="6" className="muted" style={{ textAlign: 'center', padding: 20 }}>لا توجد عمليات مسجّلة</td></tr>
+              <tr><td colSpan="6" className="muted" style={{ textAlign: 'center', padding: 20 }}>{t('salary.export.noMovesRecorded')}</td></tr>
             )}
             {rows.map((r) => (
               <tr key={r.id}>
-                <td className="nowrap">{String(r.created_at).replace('T', ' ').slice(0, 19)}</td>
+                <td className="nowrap">{dtm(r.created_at)}</td>
                 <td><b>{r.actor_name || '—'}</b></td>
-                <td>{r.actor_role === 'accountant' ? 'محاسب' : r.actor_role === 'manager' ? 'مدير' : r.actor_role}</td>
+                <td>{roleLabel(r.actor_role)}</td>
                 <td>
                   <span className={r.action === 'reverse' ? 'badge badge-warning' : 'badge badge-paid'}>
-                    {ACTION_LABELS[r.action] || r.action}
+                    {actionLabels[r.action] || r.action}
                   </span>
                 </td>
-                <td className="nowrap">{ENTITY_LABELS[r.entity_type] || r.entity_type} #{r.entity_id}</td>
+                <td className="nowrap">{entityLabels[r.entity_type] || r.entity_type} #{r.entity_id}</td>
                 <td className="muted" style={{ fontSize: 12, maxWidth: 380, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                   {r.details ? JSON.stringify(r.details) : '—'}
                 </td>

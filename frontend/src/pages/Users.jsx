@@ -1,10 +1,9 @@
 import { useEffect, useState } from 'react';
 import { usersApi } from '../utils/api.js';
-import { fmt } from './Dashboard.jsx';
-
-const roleLabels = { manager: 'مدير', employee: 'موظف', accountant: 'محاسب' };
+import { useI18n } from '../i18n/I18nContext.jsx';
 
 export default function Users() {
+  const { t, fmt, roleLabel } = useI18n();
   const [rows, setRows] = useState([]);
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({ username: '', full_name: '', role: 'employee', salary: '', password: '' });
@@ -45,7 +44,7 @@ export default function Users() {
   };
 
   const remove = async (u) => {
-    if (!confirm(`حذف المستخدم ${u.full_name}؟`)) return;
+    if (!confirm(t('users.confirmDelete', { name: u.full_name }))) return;
     try { await usersApi.remove(u.id); load(); } catch (err) { alert(err.message); }
   };
 
@@ -53,44 +52,44 @@ export default function Users() {
     <div className="page">
       <div className="toolbar">
         <div>
-          <h1 className="page-title">المستخدمون</h1>
-          <p className="page-sub">إدارة حسابات المديرين والمحاسبين والموظفين</p>
+          <h1 className="page-title">{t('users.title')}</h1>
+          <p className="page-sub">{t('users.subtitle')}</p>
         </div>
-        <button className="btn btn-primary" onClick={openNew}>➕ مستخدم جديد</button>
+        <button className="btn btn-primary" onClick={openNew}>➕ {t('users.newUser')}</button>
       </div>
 
       {showForm && (
         <form className="card" onSubmit={save} style={{ marginBottom: 20 }}>
-          <h3 style={{ marginBottom: 16 }}>{editId ? 'تعديل مستخدم' : 'مستخدم جديد'}</h3>
+          <h3 style={{ marginBottom: 16 }}>{editId ? t('users.editUser') : t('users.newUser')}</h3>
           <div className="grid grid-2">
             <div className="form-row">
-              <label className="form-label">اسم المستخدم *</label>
+              <label className="form-label">{t('users.username')} *</label>
               <input className="input" value={form.username} onChange={(e) => setForm({ ...form, username: e.target.value })} disabled={!!editId} required />
             </div>
             <div className="form-row">
-              <label className="form-label">الاسم الكامل *</label>
+              <label className="form-label">{t('users.fullName')} *</label>
               <input className="input" value={form.full_name} onChange={(e) => setForm({ ...form, full_name: e.target.value })} required />
             </div>
             <div className="form-row">
-              <label className="form-label">الدور *</label>
+              <label className="form-label">{t('users.role')} *</label>
               <select className="select" value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value })}>
-                <option value="employee">موظف</option>
-                <option value="manager">مدير</option>
-                <option value="accountant">محاسب</option>
+                <option value="employee">{roleLabel('employee')}</option>
+                <option value="manager">{roleLabel('manager')}</option>
+                <option value="accountant">{roleLabel('accountant')}</option>
               </select>
             </div>
             <div className="form-row">
-              <label className="form-label">الراتب الشهري (MRU) — للموظفين فقط</label>
+              <label className="form-label">{t('users.salaryLabel', { currency: t('common.currency') })}</label>
               <input className="input" type="number" step="0.01" min="0" dir="ltr" value={form.salary} onChange={(e) => setForm({ ...form, salary: e.target.value })} required={form.role === 'employee'} />
             </div>
             <div className="form-row">
-              <label className="form-label">{editId ? 'كلمة مرور جديدة (اختياري)' : 'كلمة المرور *'}</label>
+              <label className="form-label">{editId ? t('users.newPassword') : t('users.password')}</label>
               <input className="input" type="password" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} required={!editId} />
             </div>
           </div>
           {msg && <div className="form-error" style={{ marginTop: 0 }}>{msg}</div>}
-          <button className="btn btn-success btn-sm" type="submit">حفظ</button>{' '}
-          <button className="btn btn-outline btn-sm" type="button" onClick={() => setShowForm(false)}>إلغاء</button>
+          <button className="btn btn-success btn-sm" type="submit">{t('common.save')}</button>{' '}
+          <button className="btn btn-outline btn-sm" type="button" onClick={() => setShowForm(false)}>{t('common.cancel')}</button>
         </form>
       )}
 
@@ -98,7 +97,7 @@ export default function Users() {
         <table className="table">
           <thead>
             <tr>
-              <th>الاسم الكامل</th><th>اسم المستخدم</th><th>الدور</th><th>الراتب الشهري</th><th>الحالة</th><th></th>
+              <th>{t('users.fullName')}</th><th>{t('users.username')}</th><th>{t('users.role')}</th><th>{t('users.salary')}</th><th>{t('common.status')}</th><th></th>
             </tr>
           </thead>
           <tbody>
@@ -106,14 +105,14 @@ export default function Users() {
               <tr key={u.id}>
                 <td><b>{u.full_name}</b></td>
                 <td>{u.username}</td>
-                <td><span className={u.role === 'manager' ? 'badge badge-priced' : u.role === 'accountant' ? 'badge badge-processing' : 'badge badge-processing'}>{roleLabels[u.role]}</span></td>
+                <td><span className={u.role === 'manager' ? 'badge badge-priced' : u.role === 'accountant' ? 'badge badge-processing' : 'badge badge-processing'}>{roleLabel(u.role)}</span></td>
                 <td className="nowrap">{u.role === 'employee' ? fmt(u.salary) : <span className="muted">—</span>}</td>
-                <td>{u.is_active ? <span className="badge badge-paid">نشط</span> : <span className="badge badge-processing">معطل</span>}</td>
+                <td>{u.is_active ? <span className="badge badge-paid">{t('users.active')}</span> : <span className="badge badge-processing">{t('users.inactive')}</span>}</td>
                 <td className="nowrap">
                   {rowMsg[u.id] && <span className="form-error" style={{ marginLeft: 10 }}>{rowMsg[u.id]}</span>}
-                  <button className="btn btn-outline btn-sm" onClick={() => openEdit(u)}>تعديل</button>{' '}
-                  <button className="btn btn-outline btn-sm" onClick={() => toggleActive(u)}>{u.is_active ? 'تعطيل' : 'تفعيل'}</button>{' '}
-                  <button className="btn btn-danger btn-sm" onClick={() => remove(u)}>حذف</button>
+                  <button className="btn btn-outline btn-sm" onClick={() => openEdit(u)}>{t('common.edit')}</button>{' '}
+                  <button className="btn btn-outline btn-sm" onClick={() => toggleActive(u)}>{u.is_active ? t('users.deactivate') : t('users.activate')}</button>{' '}
+                  <button className="btn btn-danger btn-sm" onClick={() => remove(u)}>{t('common.delete')}</button>
                 </td>
               </tr>
             ))}

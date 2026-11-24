@@ -3,7 +3,9 @@ import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { getCompany } from './company.js';
 import { logoUrl, logoFallback } from './logo.js';
-import { fmt } from './format.js';
+import { fmt, getLang, translate as t, dlong, dmy } from '../i18n/runtime.js';
+
+const isRtl = () => getLang() === 'ar';
 
 // ---- Excel export ----
 // rows: array of objects, columns: [{ key, header }]
@@ -15,7 +17,7 @@ export function exportExcel(filename, columns, rows) {
   });
   const ws = XLSX.utils.json_to_sheet(data);
   const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, 'تقرير');
+  XLSX.utils.book_append_sheet(wb, ws, t('pdf.reportSheet'));
   XLSX.writeFile(wb, `${filename}.xlsx`);
 }
 
@@ -23,16 +25,16 @@ export function exportExcel(filename, columns, rows) {
 export function exportPdf(title, headers, rows, sub = '') {
   const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
   const pageW = doc.internal.pageSize.getWidth();
-  const dateStr = new Date().toLocaleDateString('ar-MA');
   const c = getCompany();
+  const rtl = isRtl();
 
   // company header
   doc.setFontSize(15);
   doc.setFont('helvetica', 'bold');
-  doc.text(c.nameAr, pageW / 2, 14, { align: 'center' });
+  doc.text(rtl ? c.nameAr : c.nameFr || c.nameAr, pageW / 2, 14, { align: 'center' });
   doc.setFontSize(9);
   doc.setFont('helvetica', 'normal');
-  doc.text(`${c.form} — ${c.nameFr}`, pageW / 2, 20, { align: 'center' });
+  doc.text(`${c.form} — ${rtl ? c.nameFr : c.nameAr}`, pageW / 2, 20, { align: 'center' });
   doc.setDrawColor(200);
   doc.line(12, 24, pageW - 12, 24);
 
@@ -58,9 +60,9 @@ export function exportPdf(title, headers, rows, sub = '') {
   const endY = doc.lastAutoTable.finalY + 8;
   doc.setFontSize(9);
   doc.setFont('helvetica', 'bold');
-  doc.text(`تاريخ الإصدار: ${dateStr}`, 12, endY);
-  doc.text(`Tel : ${c.tel} — NIF : ${c.nifRcAgrement}`, pageW - 12, endY, { align: 'right' });
-  doc.text(`أُنشئ بواسطة نظام المحاسبة الجمركية ${c.form}`, pageW / 2, endY + 25, { align: 'center' });
+  doc.text(t('pdf.issuedOn', { date: dlong(new Date()) }), 12, endY);
+  doc.text(t('pdf.tel', { tel: c.tel || '', nif: c.nifRcAgrement || '' }), pageW - 12, endY, { align: 'right' });
+  doc.text(t('pdf.generatedBy', { app: t('common.appName'), form: c.form }), pageW / 2, endY + 25, { align: 'center' });
 
   doc.save(`${title.replace(/\s+/g, '_')}.pdf`);
 }
@@ -86,8 +88,8 @@ async function loadCompanyLogo() {
 export async function exportStatementPdf(customer, entries, period, totals) {
   const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
   const pageW = doc.internal.pageSize.getWidth();
-  const dateStr = new Date().toLocaleDateString('ar-MA');
   const c = getCompany();
+  const rtl = isRtl();
 
   const logoData = await loadCompanyLogo();
 
@@ -97,27 +99,27 @@ export async function exportStatementPdf(customer, entries, period, totals) {
   // company header
   doc.setFontSize(15);
   doc.setFont('helvetica', 'bold');
-  doc.text(c.nameAr, pageW / 2, topY, { align: 'center' });
+  doc.text(rtl ? c.nameAr : c.nameFr || c.nameAr, pageW / 2, topY, { align: 'center' });
   doc.setFontSize(9);
   doc.setFont('helvetica', 'normal');
-  doc.text(`${c.form} — ${c.nameFr}`, pageW / 2, topY + 6, { align: 'center' });
+  doc.text(`${c.form} — ${rtl ? c.nameFr : c.nameAr}`, pageW / 2, topY + 6, { align: 'center' });
   doc.setDrawColor(200);
   doc.line(12, topY + 11, pageW - 12, topY + 11);
 
   doc.setFontSize(13);
   doc.setFont('helvetica', 'bold');
-  doc.text('كشف حساب', pageW / 2, topY + 19, { align: 'center' });
+  doc.text(t('pdf.statement'), pageW / 2, topY + 19, { align: 'center' });
 
   doc.setFontSize(10);
   doc.setFont('helvetica', 'normal');
-  doc.text(`الزبون: ${customer.name}`, 12, topY + 27);
+  doc.text(t('pdf.customer', { name: customer.name }), 12, topY + 27);
   const periodLabel = period?.from
-    ? `الفترة: ${period.from}  إلى  ${period.to || 'الآن'}`
-    : 'الفترة: كامل الفترة';
+    ? t('pdf.period', { from: dmy(period.from), to: period.to ? dmy(period.to) : t('common.now') })
+    : t('pdf.periodAll');
   doc.text(periodLabel, 12, topY + 33);
 
   const rows = entries.map((e) => [
-    e.date,
+    dmy(e.date),
     e.description || '',
     e.debit == null ? '—' : fmt(e.debit),
     e.credit == null ? '—' : fmt(e.credit),
@@ -126,7 +128,7 @@ export async function exportStatementPdf(customer, entries, period, totals) {
 
   autoTable(doc, {
     startY: topY + 40,
-    head: [['التاريخ', 'البيان', 'مَدين', 'دائن', 'الرصيد']],
+    head: [[t('common.date'), t('common.description'), t('common.debit'), t('common.credit'), t('common.balance')]],
     body: rows,
     styles: { font: 'helvetica', fontSize: 8.5, cellPadding: 2.2, halign: 'right' },
     headStyles: { fillColor: [29, 78, 216], textColor: 255, fontStyle: 'bold', halign: 'right' },
@@ -137,11 +139,12 @@ export async function exportStatementPdf(customer, entries, period, totals) {
 
   const endY = doc.lastAutoTable.finalY;
   const periodEnd = entries.length ? entries[entries.length - 1].balance : (period?.opening ?? totals.balance);
+  const currency = t('common.currency');
 
   doc.setFontSize(10);
   doc.setFont('helvetica', 'bold');
-  doc.text(`الرصيد النهائي للفترة: ${fmt(periodEnd)} MRU`, 12, endY + 8);
-  doc.text(`الرصيد الحالي الكلي: ${fmt(totals.balance)} MRU`, pageW - 12, endY + 8, { align: 'right' });
+  doc.text(t('pdf.finalBalance', { amount: `${fmt(periodEnd)} ${currency}` }), 12, endY + 8);
+  doc.text(t('pdf.currentBalance', { amount: `${fmt(totals.balance)} ${currency}` }), pageW - 12, endY + 8, { align: 'right' });
 
   // signature area (the agency stamp is applied manually after printing)
   const sigY = endY + 18;
@@ -150,15 +153,15 @@ export async function exportStatementPdf(customer, entries, period, totals) {
   doc.setFontSize(9);
   doc.setFont('helvetica', 'bold');
   doc.rect(pageW - 92, sigY, 80, 34);
-  doc.text('توقيع إدارة النظام', pageW - 52, sigY + 8, { align: 'center' });
+  doc.text(t('common.companyStamp'), pageW - 52, sigY + 8, { align: 'center' });
   doc.line(pageW - 78, sigY + 24, pageW - 34, sigY + 24);
 
   // footer
   doc.setFontSize(9);
   doc.setFont('helvetica', 'normal');
-  doc.text(`تاريخ الإصدار: ${dateStr}`, 12, 285);
-  doc.text(`Tel : ${c.tel} — NIF : ${c.nifRcAgrement}`, pageW - 12, 285, { align: 'right' });
-  doc.text(`أُنشئ بواسطة نظام المحاسبة الجمركية ${c.form}`, pageW / 2, 292, { align: 'center' });
+  doc.text(t('pdf.issuedOn', { date: dlong(new Date()) }), 12, 285);
+  doc.text(t('pdf.tel', { tel: c.tel || '', nif: c.nifRcAgrement || '' }), pageW - 12, 285, { align: 'right' });
+  doc.text(t('pdf.generatedBy', { app: t('common.appName'), form: c.form }), pageW / 2, 292, { align: 'center' });
 
-  doc.save(`كشف_حساب_${customer.name}.pdf`);
+  doc.save(`${t('pdf.statementFile', { name: customer.name })}.pdf`);
 }

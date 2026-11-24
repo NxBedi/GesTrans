@@ -2,21 +2,21 @@ import { Fragment, useEffect, useMemo, useState } from 'react';
 import { useAuth } from '../contexts/AuthContext.jsx';
 import { containersApi, customersApi, invoiceTypesApi, usersApi } from '../utils/api.js';
 import { refreshDashboard } from '../utils/refresh.js';
-import { fmt } from './Dashboard.jsx';
 import { useCompany } from '../contexts/CompanyContext.jsx';
+import { useI18n } from '../i18n/I18nContext.jsx';
 import CompanyLogo from '../components/CompanyLogo.jsx';
 import ChargesAPayer, { exportCsv } from '../components/ChargesAPayer.jsx';
 import ContainerAccessPanel, { AccessSummary, EmployeePicker } from '../components/ContainerAccess.jsx';
 
 const COLUMNS = [
-  { key: 'bl_number', label: 'Numero BL', align: 'left' },
-  { key: 'container_number', label: 'N conteneur', align: 'left' },
-  { key: 'customer_name', label: 'Client', align: 'right' },
-  { key: 'registration_date', label: 'Arrivée', align: 'left', type: 'date' },
-  { key: 'quantity', label: 'Qte', align: 'left', type: 'num' },
-  { key: 'contents', label: 'Article', align: 'right' },
-  { key: 'container_type', label: 'TC', align: 'left' },
-  { key: 'free_days_left', label: 'Free Franchise', align: 'center' },
+  { key: 'bl_number', labelKey: 'containers.colBl', align: 'left' },
+  { key: 'container_number', labelKey: 'containers.colContainer', align: 'left' },
+  { key: 'customer_name', labelKey: 'common.customer', align: 'right' },
+  { key: 'registration_date', labelKey: 'containers.colArrival', align: 'left', type: 'date' },
+  { key: 'quantity', labelKey: 'containers.colQuantity', align: 'left', type: 'num' },
+  { key: 'contents', labelKey: 'containers.colContents', align: 'right' },
+  { key: 'container_type', labelKey: 'containers.colContainerType', align: 'left' },
+  { key: 'free_days_left', labelKey: 'containers.colFreeDays', align: 'center' },
 ];
 
 function empty() {
@@ -27,29 +27,23 @@ function today() {
   return new Date().toISOString().slice(0, 10);
 }
 
-function fmtDate(d) {
-  if (!d) return '—';
-  const s = String(d).slice(0, 10);
-  const [y, m, dd] = s.split('-');
-  return dd && m && y ? `${dd}/${m}/${y}` : s;
-}
-
 function FreeStorageBadge({ row }) {
+  const { t } = useI18n();
   const until = Number(row.days_until_arrival) || 0;
   const total = Number(row.free_storage_days) || 15;
   if (until > 0) {
-    return <span className="franchise-countdown">⏳ {until}j avant arrivée</span>;
+    return <span className="franchise-countdown">{t('containers.badgeArrival', { days: until })}</span>;
   }
   const left = Number(row.free_days_left);
   if (left > 0) {
-    return <span className="franchise-ok">✓ {left}j / {total}j</span>;
+    return <span className="franchise-ok">{t('containers.badgeLeft', { left, total })}</span>;
   }
   if (left === 0) {
-    return <span className="franchise-expired">Expiré aujourd'hui</span>;
+    return <span className="franchise-expired">{t('containers.badgeExpiredToday')}</span>;
   }
   return (
-    <span className="franchise-expired" title="أيام التخزين المحسوبة بعد انتهاء المهلة">
-      Expiré (+{Math.abs(left)}j)
+    <span className="franchise-expired" title={t('containers.badgeExpiredTitle')}>
+      {t('containers.badgeExpiredAfter', { days: Math.abs(left) })}
     </span>
   );
 }
@@ -57,6 +51,7 @@ function FreeStorageBadge({ row }) {
 export default function ListeBL() {
   const { user } = useAuth();
   const { company } = useCompany();
+  const { t, fmt, dmy, companyName } = useI18n();
   const isManager = user?.role === 'manager';
   const [rows, setRows] = useState([]);
   const [customers, setCustomers] = useState([]);
@@ -217,7 +212,7 @@ export default function ListeBL() {
   };
 
   const submitBulk = async () => {
-    if (!bulk?.employeeIds.length) { setBulkErr('Choisissez au moins un employé'); return; }
+    if (!bulk?.employeeIds.length) { setBulkErr(t('containers.bulkPickEmployee')); return; }
     setBulkBusy(true);
     setBulkErr('');
     try {
@@ -239,12 +234,12 @@ export default function ListeBL() {
   };
 
   const remove = async (row) => {
-    if (!confirm(`Supprimer le BL ${row.bl_number} ?`)) return;
+    if (!confirm(t('containers.confirmDeleteBl', { bl: row.bl_number }))) return;
     try { await containersApi.remove(row.id); load(); refreshDashboard(); } catch (e) { alert(e.message); }
   };
 
   const closeContainer = async (row) => {
-    if (!confirm(`Fermer le BL ${row.bl_number} ? (Liquidation) — il passera à la liste "Tubea prêts à être tarifés" (جاهزة للتسعير).`)) return;
+    if (!confirm(t('containers.confirmCloseBl', { bl: row.bl_number }))) return;
     try { await containersApi.close(row.id); load(); refreshDashboard(); } catch (e) { alert(e.message); }
   };
 
@@ -255,14 +250,14 @@ export default function ListeBL() {
 
   const registerLiqInvoice = async () => {
     const liqType = types.find((t) => String(t.name).trim().toLowerCase() === 'liquidation');
-    if (!liqType) { setLiqInvErr('نوع LIQUIDATION غير متاح'); return; }
+    if (!liqType) { setLiqInvErr(t('containers.errorNoLiquidationType')); return; }
     const amt = Number(liqInvForm.amount);
     if (!String(liqInvForm.invoice_number).trim() || !liqInvForm.entry_date) {
-      setLiqInvErr('رقم LIQUIDATION والتاريخ مطلوبان');
+      setLiqInvErr(t('containers.errorLiqFieldsRequired'));
       return;
     }
     if (liqInvForm.amount === '' || !isFinite(amt) || amt <= 0) {
-      setLiqInvErr('أدخل مبلغاً صحيحاً أكبر من صفر');
+      setLiqInvErr(t('containers.errorPositiveAmount'));
       return;
     }
     setLiqInvBusy(true);
@@ -299,8 +294,8 @@ export default function ListeBL() {
 
   const saveEditInv = async () => {
     const amt = Number(invEditForm.amount);
-    if (!invEditForm.entry_date) { setInvEditErr('التاريخ مطلوب'); return; }
-    if (!String(invEditForm.amount).trim() || !isFinite(amt) || amt <= 0) { setInvEditErr('أدخل مبلغاً صحيحاً أكبر من صفر'); return; }
+    if (!invEditForm.entry_date) { setInvEditErr(t('containers.errorDateRequired')); return; }
+    if (!String(invEditForm.amount).trim() || !isFinite(amt) || amt <= 0) { setInvEditErr(t('containers.errorPositiveAmount')); return; }
     setInvEditBusy(true);
     setInvEditErr('');
     try {
@@ -319,7 +314,7 @@ export default function ListeBL() {
   };
 
   const deleteInvoice = async (inv) => {
-    if (!confirm(`حذف الفاتورة «${inv.type_name}» (${fmt(inv.amount)})؟`)) return;
+    if (!confirm(t('containers.confirmDeleteInvoice', { name: inv.type_name, amount: fmt(inv.amount) }))) return;
     try {
       await containersApi.removeInvoice(chgDetail.container.id, inv.id);
       if (chgRow) setEditInv(null);
@@ -343,46 +338,46 @@ export default function ListeBL() {
     <div className="page" style={{ direction: 'ltr', textAlign: 'left', maxWidth: 1400 }}>
       <div className="toolbar">
         <div>
-          <h1 className="page-title">Liste BL</h1>
-          <p className="page-sub">Gestion des BL</p>
+          <h1 className="page-title">{t('containers.title')}</h1>
+          <p className="page-sub">{t('containers.subtitle')}</p>
         </div>
-        <button className="btn btn-primary" onClick={openAdd}>➕ Nouveau BL</button>
+        <button className="btn btn-primary" onClick={openAdd}>{t('containers.newBl')}</button>
       </div>
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 4, borderBottom: '2px solid #e2e8f0', marginBottom: 16 }}>
         <div style={{ padding: '10px 16px', fontWeight: 800, fontSize: 15, background: '#fff', border: '2px solid #e2e8f0', borderBottom: '2px solid #fff', borderTopLeftRadius: 10, borderTopRightRadius: 10, marginBottom: -2 }}>
-          En cours{' '}
+          {t('containers.inProgress')}{' '}
           <span style={{ background: '#facc15', color: '#000', borderRadius: 999, padding: '1px 9px', fontSize: 13, fontWeight: 800 }}>{rows.length}</span>
         </div>
       </div>
 
       <div style={{ display: 'flex', gap: 10, marginBottom: 16, flexWrap: 'wrap', alignItems: 'center' }}>
-        <input className="input" style={{ flex: '1 1 260px' }} placeholder="Recherche (BL, conteneur, client)…" value={q} onChange={(e) => setQ(e.target.value)} />
+        <input className="input" style={{ flex: '1 1 260px' }} placeholder={t('containers.searchPlaceholder')} value={q} onChange={(e) => setQ(e.target.value)} />
         {isManager && (
           <select
             className="select"
             style={{ maxWidth: 300 }}
-            title="Filtrer par visibilité"
+            title={t('containers.accessFilterLabel')}
             value={accessFilter}
             onChange={(e) => setAccessFilter(e.target.value)}
           >
-            <option value="all">Toutes les BL</option>
-            <option value="hidden">Masquées pour tous</option>
+            <option value="all">{t('containers.accessFilterAll')}</option>
+            <option value="hidden">{t('containers.accessFilterHidden')}</option>
             {employees.map((emp) => (
-              <option key={emp.id} value={`emp:${emp.id}`}>Visible pour : {emp.full_name}</option>
+              <option key={emp.id} value={`emp:${emp.id}`}>{t('containers.accessFilterEmployee', { name: emp.full_name })}</option>
             ))}
           </select>
         )}
-        <div className="muted" style={{ display: 'flex', alignItems: 'center' }}>{loading ? 'Chargement…' : `${filtered.length} BL`}</div>
+        <div className="muted" style={{ display: 'flex', alignItems: 'center' }}>{loading ? t('common.loading') : t('containers.blCount', { count: filtered.length })}</div>
       </div>
 
       {isManager && selected.length > 0 && (
         <div className="bulk-bar">
-          <b>{selected.length} BL sélectionnée(s)</b>
+          <b>{t('containers.bulkSelected', { count: selected.length })}</b>
           <div className="bulk-bar-actions">
-            <button className="btn btn-primary btn-sm" onClick={() => openBulk('grant')}>👥 Attribuer à des employés</button>
-            <button className="btn btn-danger btn-sm" onClick={() => openBulk('revoke')}>🚫 Retirer la visibilité</button>
-            <button className="btn btn-outline btn-sm" onClick={() => setSelected([])}>Annuler</button>
+            <button className="btn btn-primary btn-sm" onClick={() => openBulk('grant')}>👥 {t('containers.bulkAssign')}</button>
+            <button className="btn btn-danger btn-sm" onClick={() => openBulk('revoke')}>🚫 {t('containers.bulkRevoke')}</button>
+            <button className="btn btn-outline btn-sm" onClick={() => setSelected([])}>{t('common.cancel')}</button>
           </div>
         </div>
       )}
@@ -393,27 +388,27 @@ export default function ListeBL() {
             <tr>
               {isManager && (
                 <th style={{ width: 36, textAlign: 'center' }}>
-                  <input type="checkbox" checked={allSelected} onChange={toggleSelectAll} title="Tout sélectionner" />
+                  <input type="checkbox" checked={allSelected} onChange={toggleSelectAll} title={t('containers.selectAll')} />
                 </th>
               )}
               {COLUMNS.map((c) => (
                 <Fragment key={c.key}>
                   <th className="sortable" style={{ textAlign: c.align }} onClick={() => toggleSort(c.key)}>
-                    {c.label} {sortKey === c.key ? <span style={{ color: '#2563eb' }}>{sortDir === 'asc' ? '▲' : '▼'}</span> : ''}
+                    {t(c.labelKey)} {sortKey === c.key ? <span style={{ color: '#2563eb' }}>{sortDir === 'asc' ? '▲' : '▼'}</span> : ''}
                   </th>
                   {isManager && c.key === 'customer_name' && (
-                    <th style={{ textAlign: 'center' }}>Visible pour</th>
+                    <th style={{ textAlign: 'center' }}>{t('containers.accessColumn')}</th>
                   )}
                 </Fragment>
               ))}
-              {isManager && <th style={{ textAlign: 'center' }}>Liquidation</th>}
-              <th style={{ textAlign: 'center' }}>Charges a payer</th>
-              <th style={{ textAlign: 'center' }}>Actions</th>
+              {isManager && <th style={{ textAlign: 'center' }}>{t('containers.liquidation')}</th>}
+              <th style={{ textAlign: 'center' }}>{t('containers.chargesToPay')}</th>
+              <th style={{ textAlign: 'center' }}>{t('common.actions')}</th>
             </tr>
           </thead>
           <tbody>
             {filtered.length === 0 && !loading && (
-              <tr><td colSpan={COLUMNS.length + (isManager ? 3 : 0) + 2} className="muted" style={{ textAlign: 'center', padding: 20 }}>Aucun BL en cours</td></tr>
+              <tr><td colSpan={COLUMNS.length + (isManager ? 3 : 0) + 2} className="muted" style={{ textAlign: 'center', padding: 20 }}>{t('containers.empty')}</td></tr>
             )}
             {filtered.map((r) => (
               <tr key={r.id} className={selected.includes(r.id) ? 'row-selected' : undefined}>
@@ -431,14 +426,14 @@ export default function ListeBL() {
                       type="button"
                       className="access-cell"
                       onClick={() => setAccessRow(r)}
-                      title="Modifier la visibilité"
+                      title={t('containers.accessEditTitle')}
                     >
                       <AccessSummary accessList={r.access_list} />
                     </button>
                   </td>
                 )}
-                <td className="nowrap">{fmtDate(r.registration_date)}</td>
-                <td>{r.quantity ?? '—'}</td>
+                <td className="nowrap">{dmy(r.registration_date)}</td>
+                <td>{r.quantity == null ? '—' : fmt(r.quantity)}</td>
                 <td style={{ direction: 'rtl', textAlign: 'right' }}>{r.contents || '—'}</td>
                 <td className="nowrap">{r.container_type ? `${r.container_type}′` : '—'}</td>
                 <td className="nowrap" style={{ textAlign: 'center' }}><FreeStorageBadge row={r} /></td>
@@ -448,28 +443,28 @@ export default function ListeBL() {
                       <button
                         className="liq-pay-badge"
                         onClick={() => openCharges(r)}
-                        title={`LIQUIDATION — ${fmt(r.costs_amount || 0)} (total des frais)`}
+                        title={t('containers.liqPaidTitle', { amount: fmt(r.costs_amount || 0) })}
                       >
-                        ✓ Payé — {fmt(r.costs_amount || 0)}
+                        {t('containers.liqPaid', { amount: fmt(r.costs_amount || 0) })}
                       </button>
                     ) : (
-                      <button className="btn btn-success btn-sm" onClick={() => openCharges(r)}>Payer</button>
+                      <button className="btn btn-success btn-sm" onClick={() => openCharges(r)}>{t('containers.pay')}</button>
                     )}
                   </td>
                 )}
                 <td style={{ textAlign: 'center' }}>
-                  <button className="btn btn-success btn-sm" onClick={() => openCharges(r)}>Charges</button>
+                  <button className="btn btn-success btn-sm" onClick={() => openCharges(r)}>{t('containers.charges')}</button>
                 </td>
                 <td className="nowrap" style={{ textAlign: 'center' }}>
                   {isManager && (
-                    <button className="btn btn-outline btn-sm" title="Visibilité" onClick={() => setAccessRow(r)}>👥</button>
+                    <button className="btn btn-outline btn-sm" title={t('containers.accessEditTitle')} onClick={() => setAccessRow(r)}>👥</button>
                   )}{' '}
-                  <button className="btn btn-outline btn-sm" title="Modifier" onClick={() => openEdit(r)}>✏️</button>{' '}
+                  <button className="btn btn-outline btn-sm" title={t('common.edit')} onClick={() => openEdit(r)}>✏️</button>{' '}
                   {isManager && ['registered', 'processing'].includes(r.status) && (
-                    <button className="btn btn-danger btn-sm" title="Fermer (جاهزة للتسعير)" onClick={() => closeContainer(r)}>🔒</button>
+                    <button className="btn btn-danger btn-sm" title={t('containers.closeTitle')} onClick={() => closeContainer(r)}>🔒</button>
                   )}
                   {isManager && (
-                    <button className="btn btn-danger btn-sm" title="Supprimer" onClick={() => remove(r)}>🗑</button>
+                    <button className="btn btn-danger btn-sm" title={t('common.delete')} onClick={() => remove(r)}>🗑</button>
                   )}
                 </td>
               </tr>
@@ -481,64 +476,64 @@ export default function ListeBL() {
       {showAdd && (
         <div className="modal-overlay" onClick={() => setShowAdd(false)}>
           <div className="modal" style={{ maxWidth: 620 }} onClick={(e) => e.stopPropagation()}>
-            <div className="modal-title">{editRow ? `Modifier — ${editRow.bl_number}` : 'Nouveau BL'}</div>
-            <div className="modal-sub">Saisir les informations du bordereau</div>
+            <div className="modal-title">{editRow ? t('containers.editTitle', { bl: editRow.bl_number }) : t('containers.newBl')}</div>
+            <div className="modal-sub">{t('containers.modalSub')}</div>
             <form onSubmit={save} className="grid grid-2" style={{ gap: 12 }}>
               <div className="form-row" style={{ marginBottom: 0 }}>
-                <label className="form-label">Numero BL *</label>
+                <label className="form-label">{t('containers.blNumber')}</label>
                 <input className="input" value={form.bl_number} onChange={setF('bl_number')} required />
               </div>
               <div className="form-row" style={{ marginBottom: 0 }}>
-                <label className="form-label">N conteneur *</label>
+                <label className="form-label">{t('containers.containerNumber')}</label>
                 <input className="input" value={form.container_number} onChange={setF('container_number')} required />
               </div>
               <div className="form-row" style={{ marginBottom: 0 }}>
-                <label className="form-label">Client *</label>
+                <label className="form-label">{t('containers.customerField')}</label>
                 <select className="select" value={form.customer_id} onChange={setF('customer_id')} required>
-                  <option value="">— choisir —</option>
+                  <option value="">{t('containers.choose')}</option>
                   {customers.filter((c) => c.is_active).map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
                 </select>
               </div>
               <div className="form-row" style={{ marginBottom: 0 }}>
-                <label className="form-label">Arrivée *</label>
+                <label className="form-label">{t('containers.arrivalField')}</label>
                 <input className="input" type="date" value={form.registration_date} onChange={setF('registration_date')} required />
               </div>
               <div className="form-row" style={{ marginBottom: 0 }}>
-                <label className="form-label">Qte</label>
+                <label className="form-label">{t('containers.quantityField')}</label>
                 <input className="input" type="number" min="0" value={form.quantity} onChange={setF('quantity')} />
               </div>
               <div className="form-row" style={{ marginBottom: 0 }}>
-                <label className="form-label">TC</label>
+                <label className="form-label">{t('containers.containerTypeField')}</label>
                 <select className="select" value={form.container_type} onChange={setF('container_type')}>
                   <option value="40">40′</option>
                   <option value="20">20′</option>
                 </select>
               </div>
               <div className="form-row" style={{ marginBottom: 0, gridColumn: '1 / -1' }}>
-                <label className="form-label">Article (description) *</label>
+                <label className="form-label">{t('containers.contentsField')}</label>
                 <input className="input" value={form.contents} onChange={setF('contents')} required />
               </div>
               <div className="form-row" style={{ marginBottom: 0, gridColumn: '1 / -1' }}>
-                <label className="form-label">Free franchise (jours) <span className="muted" style={{ fontWeight: 400 }}>— أيام التخزين المجاني</span></label>
+                <label className="form-label">{t('containers.freeDays')} <span className="muted" style={{ fontWeight: 400 }}>— {t('containers.freeDaysHint')}</span></label>
                 <input className="input" type="number" min="0" max="365" value={form.free_storage_days} onChange={setF('free_storage_days')} />
               </div>
               {isManager && (
                 <div className="form-row" style={{ marginBottom: 0, gridColumn: '1 / -1' }}>
-                  <label className="form-label">Visible pour les employés</label>
+                  <label className="form-label">{t('containers.accessTitle')}</label>
                   <EmployeePicker
                     employees={employees}
                     value={form.employee_ids || []}
                     onChange={(ids) => setForm((f) => ({ ...f, employee_ids: ids }))}
                   />
                   <div className="muted" style={{ fontSize: 12, marginTop: 6 }}>
-                    Sans sélection, le BL reste masqué pour tous les employés.
+                    {t('containers.accessHint')}
                   </div>
                 </div>
               )}
               {msg && <div className="form-error" style={{ gridColumn: '1 / -1' }}>{msg}</div>}
               <div className="modal-actions" style={{ gridColumn: '1 / -1', justifyContent: 'space-between' }}>
-                <button className="btn btn-outline btn-sm" type="button" onClick={() => setShowAdd(false)}>Fermer</button>
-                <button className="btn btn-success btn-sm" type="submit">{editRow ? 'Enregistrer' : 'Ajouter'}</button>
+                <button className="btn btn-outline btn-sm" type="button" onClick={() => setShowAdd(false)}>{t('common.close')}</button>
+                <button className="btn btn-success btn-sm" type="submit">{editRow ? t('common.save') : t('common.add')}</button>
               </div>
             </form>
           </div>
@@ -548,8 +543,8 @@ export default function ListeBL() {
       {chgRow && chgDetail && (
         <div className="modal-overlay" onClick={() => { setChgRow(null); setChgDetail(null); }}>
           <div className="modal" style={{ maxWidth: 680 }} onClick={(e) => e.stopPropagation()}>
-            <div className="modal-title">Charges — {chgRow.bl_number}</div>
-            <div className="modal-sub" style={{ direction: 'rtl', textAlign: 'right' }}>Frais du client : {chgDetail.container.customer_name}</div>
+            <div className="modal-title">{t('containers.chargesTitle', { bl: chgRow.bl_number })}</div>
+            <div className="modal-sub" style={{ direction: 'rtl', textAlign: 'right' }}>{t('containers.customerCharges', { name: chgDetail.container.customer_name })}</div>
 
             <ChargesAPayer
               container={chgDetail.container}
@@ -571,42 +566,42 @@ export default function ListeBL() {
               return (
                 <div style={{ margin: '14px 0', padding: 14, border: '1px solid #d97706', background: liqInv ? '#f0fdf4' : '#fffbeb', borderRadius: 8 }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
-                    <b style={{ color: '#92400e', fontSize: 15 }}>🧾 LIQUIDATION (التسوية الجمركية)</b>
+                    <b style={{ color: '#92400e', fontSize: 15 }}>{t('containers.liquidationSettlement')}</b>
                     {liqInv ? (
-                      <span style={{ background: '#16a34a', color: '#fff', padding: '3px 12px', borderRadius: 20, fontWeight: 700 }}>✓ تم الدفع</span>
+                      <span style={{ background: '#16a34a', color: '#fff', padding: '3px 12px', borderRadius: 20, fontWeight: 700 }}>{t('containers.liqPaidStatus')}</span>
                     ) : (
-                      <span style={{ background: '#eab308', color: '#fff', padding: '3px 12px', borderRadius: 20, fontWeight: 700 }}>لم تُسجَّل بعد</span>
+                      <span style={{ background: '#eab308', color: '#fff', padding: '3px 12px', borderRadius: 20, fontWeight: 700 }}>{t('containers.liqNotRecorded')}</span>
                     )}
                   </div>
 
                   {liqInv ? (
                     <div style={{ marginTop: 10, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
                       <ul style={{ listStyle: 'none', margin: 0, padding: 0, fontWeight: 700 }}>
-                        <li>N° : {liqInv.invoice_number || '—'} </li>
-                        <li>Montant : {fmt(liqInv.amount)}</li>
-                        <li>Date : {fmtDate(liqInv.entry_date)}</li>
-                        <li>Saisi par : {liqInv.entered_by_name || '—'}</li>
+                        <li>{t('containers.liqInvoiceLine', { number: liqInv.invoice_number || '—' })}</li>
+                        <li>{t('containers.liqAmountLine', { amount: fmt(liqInv.amount) })}</li>
+                        <li>{t('containers.liqDateLine', { date: dmy(liqInv.entry_date) })}</li>
+                        <li>{t('containers.liqEnteredByLine', { name: liqInv.entered_by_name || '—' })}</li>
                       </ul>
-                      <button className="btn btn-outline btn-sm" onClick={() => { if (confirm(`Supprimer la LIQUIDATION N° ${liqInv.invoice_number || ''} ?`)) deleteLiqInvoice(liqInv); }}>🗑 Supprimer</button>
+                      <button className="btn btn-outline btn-sm" onClick={() => { if (confirm(t('containers.confirmDeleteLiq', { number: liqInv.invoice_number || '' }))) deleteLiqInvoice(liqInv); }}>🗑 {t('common.delete')}</button>
                     </div>
                   ) : (
                     <div style={{ marginTop: 10, display: 'grid', gridTemplateColumns: '1fr 1fr 1fr auto', gap: 10, alignItems: 'end' }}>
                       <div>
-                        <label className="label">N° LIQUIDATION <span style={{ color: '#dc2626' }}>*</span></label>
+                        <label className="label">{t('containers.liqNumber')} <span style={{ color: '#dc2626' }}>*</span></label>
                         <input className="input" dir="ltr" value={liqInvForm.invoice_number}
                           onChange={(e) => setLiqInvForm({ ...liqInvForm, invoice_number: e.target.value })} />
                       </div>
                       <div>
-                        <label className="label">Date <span style={{ color: '#dc2626' }}>*</span></label>
+                        <label className="label">{t('common.date')} <span style={{ color: '#dc2626' }}>*</span></label>
                         <input className="input" type="date" value={liqInvForm.entry_date}
                           onChange={(e) => setLiqInvForm({ ...liqInvForm, entry_date: e.target.value })} />
                       </div>
                       <div>
-                        <label className="label">Montant (MRU) <span style={{ color: '#dc2626' }}>*</span></label>
+                        <label className="label">{t('containers.amountMru', { currency: t('common.currency') })} <span style={{ color: '#dc2626' }}>*</span></label>
                         <input className="input" type="number" step="0.01" min="0" dir="ltr" value={liqInvForm.amount}
                           onChange={(e) => setLiqInvForm({ ...liqInvForm, amount: e.target.value })} />
                       </div>
-                      <button className="btn" disabled={liqInvBusy} onClick={registerLiqInvoice}>{liqInvBusy ? '...' : '📝 Enregistrer LIQUIDATION'}</button>
+                      <button className="btn" disabled={liqInvBusy} onClick={registerLiqInvoice}>{liqInvBusy ? '...' : t('containers.saveLiquidation')}</button>
                     </div>
                   )}
                   {liqInvErr && <div className="form-error" style={{ marginTop: 10 }}>{liqInvErr}</div>}
@@ -616,37 +611,37 @@ export default function ListeBL() {
 
             {isManager && liqAll.records.length > 0 && (
               <p className="muted" style={{ margin: '12px 0 4px', fontSize: 13 }}>
-                💡 عرض تدقيق شامل لكل LIQUIDATION المدفوعة من الصفحة المستقلة: «✅ LIQUIDATION المدفوعة» في القائمة الجانبية.
+                {t('containers.liqAuditHint')}
               </p>
             )}
 
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', margin: '6px 0 8px', flexWrap: 'wrap', gap: 8 }}>
-              <h4 style={{ margin: 0, fontSize: 14, fontWeight: 800 }}>Historique</h4>
+              <h4 style={{ margin: 0, fontSize: 14, fontWeight: 800 }}>{t('containers.history')}</h4>
               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                <button className="btn btn-primary btn-sm" onClick={() => openInvoice(chgRow)}>🖨️ فاتورة التكلفة</button>
-                <button className="btn btn-outline btn-sm" onClick={() => exportCsv(chgDetail.invoices)}>⬇ Export Excel</button>
+                <button className="btn btn-primary btn-sm" onClick={() => openInvoice(chgRow)}>{t('containers.costInvoice')}</button>
+                <button className="btn btn-outline btn-sm" onClick={() => exportCsv(chgDetail.invoices)}>⬇ {t('common.exportExcel')}</button>
               </div>
             </div>
 
             <table className="table">
               <thead>
-                <tr><th>Type</th><th>N°</th><th>Montant</th><th>Date</th><th>Saisi par</th>{isManager && <th> </th>}</tr>
+                <tr><th>{t('common.type')}</th><th>{t('containers.invoiceNumber')}</th><th>{t('common.amount')}</th><th>{t('common.date')}</th><th>{t('containers.enteredBy')}</th>{isManager && <th> </th>}</tr>
               </thead>
               <tbody>
                 {chgDetail.invoices.length === 0 && (
-                  <tr><td colSpan={isManager ? 6 : 5} className="muted" style={{ textAlign: 'center', padding: 12 }}>Aucun frais enregistré</td></tr>
+                  <tr><td colSpan={isManager ? 6 : 5} className="muted" style={{ textAlign: 'center', padding: 12 }}>{t('containers.noCharges')}</td></tr>
                 )}
                 {chgDetail.invoices.map((inv) => (
                   <tr key={inv.id}>
                     <td>{inv.type_name}</td>
                     <td>{inv.invoice_number || '—'}</td>
                     <td className="nowrap">{fmt(inv.amount)}</td>
-                    <td className="nowrap">{fmtDate(inv.entry_date)}</td>
+                    <td className="nowrap">{dmy(inv.entry_date)}</td>
                     <td>{inv.entered_by_name || '—'}</td>
                     {isManager && (
                       <td className="nowrap" style={{ textAlign: 'center' }}>
-                        <button className="btn btn-outline btn-sm" title="تعديل الفاتورة" onClick={() => openEditInv(inv)}>✏️</button>
-                        <button className="btn btn-danger btn-sm" title="حذف الفاتورة" style={{ marginRight: 4 }} onClick={() => deleteInvoice(inv)}>🗑</button>
+                        <button className="btn btn-outline btn-sm" title={t('containers.editInvoiceTitle')} onClick={() => openEditInv(inv)}>✏️</button>
+                        <button className="btn btn-danger btn-sm" title={t('containers.deleteInvoiceTitle')} style={{ marginRight: 4 }} onClick={() => deleteInvoice(inv)}>🗑</button>
                       </td>
                     )}
                   </tr>
@@ -654,7 +649,7 @@ export default function ListeBL() {
               </tbody>
               <tfoot>
                 <tr style={{ fontWeight: 800 }}>
-                  <td colSpan="4">Total charges</td>
+                  <td colSpan="4">{t('containers.totalCharges')}</td>
                   <td className="nowrap">{fmt(chgDetail.totals.total_costs)}</td>
                 </tr>
               </tfoot>
@@ -662,26 +657,26 @@ export default function ListeBL() {
 
             {editInv && (
               <div style={{ background: '#f0fdf4', border: '1px solid #16a34a', borderRadius: 8, padding: 14, margin: '10px 0' }}>
-                <div style={{ fontWeight: 800, fontSize: 14, marginBottom: 10 }}>✏️ تعديل فاتورة «{editInv.type_name}»</div>
+                <div style={{ fontWeight: 800, fontSize: 14, marginBottom: 10 }}>{t('containers.editInvoice', { name: editInv.type_name })}</div>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr auto', gap: 10, alignItems: 'end' }}>
                   <div>
-                    <label className="label">N°</label>
+                    <label className="label">{t('containers.invoiceNoShort')}</label>
                     <input className="input" dir="ltr" value={invEditForm.invoice_number}
                       onChange={(e) => setInvEditForm({ ...invEditForm, invoice_number: e.target.value })} />
                   </div>
                   <div>
-                    <label className="label">Date</label>
+                    <label className="label">{t('common.date')}</label>
                     <input className="input" type="date" value={invEditForm.entry_date}
                       onChange={(e) => setInvEditForm({ ...invEditForm, entry_date: e.target.value })} />
                   </div>
                   <div>
-                    <label className="label">Montant (MRU)</label>
+                    <label className="label">{t('containers.amountMru', { currency: t('common.currency') })}</label>
                     <input className="input" type="number" step="0.01" min="0" dir="ltr" value={invEditForm.amount}
                       onChange={(e) => setInvEditForm({ ...invEditForm, amount: e.target.value })} />
                   </div>
                   <div style={{ display: 'flex', gap: 6 }}>
-                    <button className="btn btn-success btn-sm" disabled={invEditBusy} onClick={saveEditInv}>{invEditBusy ? '...' : '💾 Enregistrer'}</button>
-                    <button className="btn btn-outline btn-sm" onClick={() => setEditInv(null)}>Annuler</button>
+                    <button className="btn btn-success btn-sm" disabled={invEditBusy} onClick={saveEditInv}>{invEditBusy ? '...' : `💾 ${t('common.save')}`}</button>
+                    <button className="btn btn-outline btn-sm" onClick={() => setEditInv(null)}>{t('common.cancel')}</button>
                   </div>
                 </div>
                 {invEditErr && <div className="form-error" style={{ marginTop: 8 }}>{invEditErr}</div>}
@@ -689,7 +684,7 @@ export default function ListeBL() {
             )}
 
             <div className="modal-actions">
-              <button className="btn btn-outline btn-sm" onClick={() => { setChgRow(null); setChgDetail(null); }}>Fermer</button>
+              <button className="btn btn-outline btn-sm" onClick={() => { setChgRow(null); setChgDetail(null); }}>{t('common.close')}</button>
             </div>
           </div>
         </div>
@@ -700,66 +695,66 @@ export default function ListeBL() {
           <div className="no-print card" style={{ maxWidth: 860, margin: '0 auto 16px' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, flexWrap: 'wrap', gap: 8 }}>
               <div>
-                <div className="modal-title">🧾 فاتورة التكلفة — BL {invDoc.container.bl_number}</div>
-                <div className="muted" style={{ fontSize: 13 }}>ملخص المصاريف المسجلة على الحاوية — تُسلَّم للعميل على ترويسة الشركة</div>
+                <div className="modal-title">{t('containers.costInvoiceTitle', { bl: invDoc.container.bl_number })}</div>
+                <div className="muted" style={{ fontSize: 13 }}>{t('containers.costInvoiceSub')}</div>
               </div>
               <div style={{ display: 'flex', gap: 8 }}>
-                <button className="btn btn-outline btn-sm" onClick={() => setInvDoc(null)}>إغلاق</button>
-                <button className="btn btn-primary btn-sm" onClick={printInvoice}>🖨️ تصدير PDF / طباعة</button>
+                <button className="btn btn-outline btn-sm" onClick={() => setInvDoc(null)}>{t('common.close')}</button>
+                <button className="btn btn-primary btn-sm" onClick={printInvoice}>{t('containers.printPdf')}</button>
               </div>
             </div>
           </div>
 
           <div className="print-area card" style={{ maxWidth: 860, margin: '0 auto', padding: 32 }}>
             <div className="print-header">
-              <CompanyLogo className="print-logo" alt={`شعار ${company.nameAr}`} />
+              <CompanyLogo className="print-logo" alt={t('containers.logoAlt', { name: companyName(company) })} />
               <div style={{ textAlign: 'center' }}>
-                <div className="print-company-name">{company.nameAr}</div>
+                <div className="print-company-name">{companyName(company)}</div>
                 <div className="muted" dir="ltr">{company.nameFr} — {company.form}</div>
                 <div className="muted" style={{ fontSize: 11, marginTop: 4, lineHeight: 1.7, direction: 'ltr', textAlign: 'center' }}>
-                  E-MAIL : {company.email}<br />
-                  Tel : {company.tel}<br />
+                  {t('common.email')} : {company.email}<br />
+                  {t('common.phone')} : {company.tel}<br />
                   {company.nifRcAgrement}
                 </div>
-                <div className="page-title" style={{ marginTop: 12, marginBottom: 0 }}>فاتورة التكلفة للحاوية</div>
+                <div className="page-title" style={{ marginTop: 12, marginBottom: 0 }}>{t('containers.containerCostInvoice')}</div>
               </div>
               <div className="print-header-info" style={{ textAlign: 'right' }}>
-                <div>تاريخ الإصدار: {new Date().toLocaleDateString('ar')}</div>
-                <div style={{ marginTop: 6 }}>N° : FCT-{invDoc.container.bl_number}-{new Date().toISOString().slice(0, 10).replace(/-/g, '')}</div>
+                <div>{t('pdf.issuedOn', { date: dmy(new Date()) })}</div>
+                <div style={{ marginTop: 6 }}>{t('containers.invoiceRef', { ref: `FCT-${invDoc.container.bl_number}-${new Date().toISOString().slice(0, 10).replace(/-/g, '')}` })}</div>
               </div>
             </div>
 
             <table className="table" style={{ marginTop: 16 }}>
               <tbody>
-                <tr><th style={{ width: 200 }}>اسم العميل</th><td><b>{invDoc.container.customer_name}</b></td></tr>
-                <tr><th>الناقل (BL)</th><td>{invDoc.container.bl_number}</td></tr>
-                <tr><th>رقم الحاوية</th><td>{invDoc.container.container_number} {invDoc.container.container_type ? `(${invDoc.container.container_type}′)` : ''}</td></tr>
-                <tr><th>تاريخ الوصول</th><td>{fmtDate(invDoc.container.registration_date)}</td></tr>
-                <tr><th>البضاعة</th><td>{invDoc.container.contents || '—'}</td></tr>
+                <tr><th style={{ width: 200 }}>{t('containers.customerNameField')}</th><td><b>{invDoc.container.customer_name}</b></td></tr>
+                <tr><th>{t('containers.carrierBl')}</th><td>{invDoc.container.bl_number}</td></tr>
+                <tr><th>{t('containers.containerNoField')}</th><td>{invDoc.container.container_number} {invDoc.container.container_type ? `(${invDoc.container.container_type}′)` : ''}</td></tr>
+                <tr><th>{t('containers.arrivalDate')}</th><td>{dmy(invDoc.container.registration_date)}</td></tr>
+                <tr><th>{t('containers.goods')}</th><td>{invDoc.container.contents || '—'}</td></tr>
               </tbody>
             </table>
 
-            <h3 className="print-section">التفاصيل</h3>
+            <h3 className="print-section">{t('containers.details')}</h3>
             {invDoc.invoices.length === 0 ? (
-              <p className="muted">لا توجد مصاريف مسجلة على هذه الحاوية بعد</p>
+              <p className="muted">{t('containers.noCosts')}</p>
             ) : (
               <table className="table">
                 <thead>
-                  <tr><th>النوع</th><th>رقم الفاتورة</th><th>التاريخ</th><th>المبلغ (MRU)</th></tr>
+                  <tr><th>{t('common.type')}</th><th>{t('containers.invoiceNumber')}</th><th>{t('common.date')}</th><th>{t('containers.amountMru', { currency: t('common.currency') })}</th></tr>
                 </thead>
                 <tbody>
                   {invDoc.invoices.map((invRow) => (
                     <tr key={invRow.id}>
                       <td>{invRow.type_name}</td>
                       <td>{invRow.invoice_number || '—'}</td>
-                      <td className="nowrap">{fmtDate(invRow.entry_date)}</td>
+                      <td className="nowrap">{dmy(invRow.entry_date)}</td>
                       <td className="nowrap"><b>{fmt(invRow.amount)}</b></td>
                     </tr>
                   ))}
                 </tbody>
                 <tfoot>
                   <tr style={{ fontWeight: 800 }}>
-                    <td colSpan="2">إجمالي التكاليف</td>
+                    <td colSpan="2">{t('containers.totalCosts')}</td>
                     <td />
                     <td className="nowrap">{fmt(invDoc.totals.total_costs)}</td>
                   </tr>
@@ -769,13 +764,13 @@ export default function ListeBL() {
 
             <div className="print-sign" style={{ display: 'flex', alignItems: 'flex-end', marginTop: 48, minHeight: 140 }}>
               <div>
-                <div className="muted" style={{ marginBottom: 6 }}>توقيع المدير</div>
+                <div className="muted" style={{ marginBottom: 6 }}>{t('containers.managerSignature')}</div>
                 <div style={{ width: 220, borderBottom: '1px solid #64748b', height: 40 }} />
               </div>
             </div>
 
             <div className="print-footer muted">
-              فاتورة التكلفة صادرة رسمياً من نظام {company.nameAr} — تُمثّل المصاريف المستحقة على هذه الحاوية
+              {t('containers.costInvoiceFooter', { company: companyName(company) })}
             </div>
           </div>
         </div>
@@ -784,15 +779,15 @@ export default function ListeBL() {
       {accessRow && (
         <div className="modal-overlay" onClick={() => setAccessRow(null)}>
           <div className="modal" style={{ maxWidth: 520 }} onClick={(e) => e.stopPropagation()}>
-            <div className="modal-title">Visibilité — {accessRow.bl_number}</div>
-            <div className="modal-sub">Choisir les employés qui peuvent voir ce BL.</div>
+            <div className="modal-title">{t('containers.accessModalTitle', { bl: accessRow.bl_number })}</div>
+            <div className="modal-sub">{t('containers.accessModalSub')}</div>
             <ContainerAccessPanel
               container={accessRow}
               employees={employees}
               onSaved={applyAccessUpdate}
             />
             <div className="modal-actions">
-              <button className="btn btn-outline btn-sm" onClick={() => setAccessRow(null)}>Fermer</button>
+              <button className="btn btn-outline btn-sm" onClick={() => setAccessRow(null)}>{t('common.close')}</button>
             </div>
           </div>
         </div>
@@ -803,13 +798,11 @@ export default function ListeBL() {
           <div className="modal" style={{ maxWidth: 520 }} onClick={(e) => e.stopPropagation()}>
             <div className="modal-title">
               {bulk.action === 'grant'
-                ? `Attribuer ${bulk.ids.length} BL à des employés`
-                : `Retirer la visibilité de ${bulk.ids.length} BL`}
+                ? t('containers.bulkAssignTitle', { count: bulk.ids.length })
+                : t('containers.bulkRevokeTitle', { count: bulk.ids.length })}
             </div>
             <div className="modal-sub">
-              {bulk.action === 'grant'
-                ? 'Les employés sélectionnés verront ces BL.'
-                : 'Les employés sélectionnés ne verront plus ces BL.'}
+              {bulk.action === 'grant' ? t('containers.bulkAssignSub') : t('containers.bulkRevokeSub')}
             </div>
             <EmployeePicker
               employees={employees}
@@ -818,13 +811,13 @@ export default function ListeBL() {
             />
             {bulkErr && <div className="form-error">{bulkErr}</div>}
             <div className="modal-actions">
-              <button className="btn btn-outline btn-sm" onClick={() => setBulk(null)}>Annuler</button>
+              <button className="btn btn-outline btn-sm" onClick={() => setBulk(null)}>{t('common.cancel')}</button>
               <button
                 className={`btn btn-sm ${bulk.action === 'revoke' ? 'btn-danger' : 'btn-success'}`}
                 disabled={bulkBusy}
                 onClick={submitBulk}
               >
-                {bulkBusy ? '...' : 'Appliquer'}
+                {bulkBusy ? '...' : t('containers.bulkApply')}
               </button>
             </div>
           </div>

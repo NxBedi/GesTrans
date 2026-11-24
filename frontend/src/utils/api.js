@@ -1,3 +1,5 @@
+import { getLang, translate } from '../i18n/runtime.js';
+
 const BASE = '/api';
 
 function getToken() {
@@ -11,14 +13,24 @@ export function setToken(token) {
 
 export async function api(path, options = {}) {
   const token = getToken();
-  const headers = { 'Content-Type': 'application/json', ...(options.headers || {}) };
+  const headers = {
+    'Content-Type': 'application/json',
+    // the API translates its messages into the active language
+    'Accept-Language': getLang(),
+    ...(options.headers || {}),
+  };
   if (token) headers['Authorization'] = `Bearer ${token}`;
 
-  const res = await fetch(BASE + path, { ...options, headers });
+  let res;
+  try {
+    res = await fetch(BASE + path, { ...options, headers });
+  } catch {
+    throw new Error(translate('errors.network'));
+  }
   if (res.status === 204) return null;
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
-    const err = new Error(data.error || 'حدث خطأ في الطلب');
+    const err = new Error(data.error || translate('errors.generic'));
     err.status = res.status;
     throw err;
   }
@@ -168,7 +180,7 @@ export const backupsApi = {
       body: file,
     });
     const data = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(data.error || 'فشلت الاستعادة');
+    if (!res.ok) throw new Error(data.error || translate('errors.restoreFailed'));
     return data;
   },
   download: async (name) => {
@@ -176,7 +188,7 @@ export const backupsApi = {
     const res = await fetch(BASE + `/backups/${encodeURIComponent(name)}/download`, {
       headers: token ? { Authorization: `Bearer ${token}` } : {},
     });
-    if (!res.ok) throw new Error('تعذّر تحميل النسخة');
+    if (!res.ok) throw new Error(translate('errors.downloadFailed'));
     return res.blob();
   },
 };
