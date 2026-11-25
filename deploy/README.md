@@ -1,8 +1,8 @@
 # نشر الواجهة على tewba.seheltech.com
 
-هذا المجلد يحتوي حزمة النشر الخاصة بالكوميت `4b7a0ec`
+هذا المجلد يحتوي حزمة النشر الخاصة بالكوميت `2b6628a`
 (صفحة كشف الحساب كصفحة كاملة + إبراز بطاقات نقدية الصندوق وإجمالي الديون وأرباح الحاويات
-+ عنوان التبويب «مؤسسة التوبة» / «ETS TEWBA»).
++ عنوان التبويب «مؤسسة التوبة» / «ETS TEWBA» + احتساب الدين القديم ضمن رأس المال).
 
 > **ملاحظة:** التغييرات واجهة فقط (Frontend). الخادم الخلفي وقاعدة البيانات لم يتغيرا،
 > لذلك لا حاجة لإعادة تشغيل الـ backend.
@@ -11,21 +11,21 @@
 
 | الملف | الوصف |
 |---|---|
-| `tewba-frontend-4b7a0ec.tar.gz` | محتويات `frontend/dist` جاهزة للفك في جذر الموقع |
+| `tewba-frontend-2b6628a.tar.gz` | محتويات `frontend/dist` جاهزة للفك في جذر الموقع |
 | `deploy-tewba.sh` | سكربت نشر آمن: يتحقق من البصمة، يأخذ نسخة احتياطية، يفك الحزمة، يعمل `nginx -t` ثم يعيد التحميل |
 | `README.md` | هذا الملف |
 
 - بصمة الحزمة SHA256:
-  `a66e2d7b2ef9c844ea469e7b04b2105f016baf424e1884b79ac3435d812a654e`
+  `9066e7d697c1f585a19398a1e6f438cc30a9d4e5de8b6834f57030ef6236655a`
 - الأصول المتوقعة بعد النشر:
-  `assets/index-DtZv2v2T.js` و `assets/index-COza5ahJ.css`
+  `assets/index-ge43fJII.js` و `assets/index-COza5ahJ.css`
 
 ## 1) رفع الحزمة إلى السيرفر
 
 من PowerShell على جهازك:
 
 ```powershell
-scp "C:\Users\LMR\projects\GesTrans\deploy\tewba-frontend-4b7a0ec.tar.gz" root@62.84.188.109:/tmp/
+scp "C:\Users\LMR\projects\GesTrans\deploy\tewba-frontend-2b6628a.tar.gz" root@62.84.188.109:/tmp/
 scp "C:\Users\LMR\projects\GesTrans\deploy\deploy-tewba.sh" root@62.84.188.109:/tmp/
 ```
 
@@ -34,14 +34,14 @@ scp "C:\Users\LMR\projects\GesTrans\deploy\deploy-tewba.sh" root@62.84.188.109:/
 ## 2) التنفيذ على السيرفر
 
 ```bash
-sudo bash /tmp/deploy-tewba.sh /tmp/tewba-frontend-4b7a0ec.tar.gz
+sudo bash /tmp/deploy-tewba.sh /tmp/tewba-frontend-2b6628a.tar.gz
 ```
 
 إذا لم يتمكن السكربت من اكتشاف مجلد الموقع تلقائياً:
 
 ```bash
 nginx -T | grep -nE 'server_name|root '
-sudo WEB_ROOT=/var/www/tewba bash /tmp/deploy-tewba.sh /tmp/tewba-frontend-4b7a0ec.tar.gz
+sudo WEB_ROOT=/var/www/tewba bash /tmp/deploy-tewba.sh /tmp/tewba-frontend-2b6628a.tar.gz
 ```
 
 ## 3) التحقق
@@ -53,7 +53,7 @@ curl -fsS https://tewba.seheltech.com/ | grep -oE 'assets/index-[A-Za-z0-9_-]+\.
 يجب أن يظهر:
 
 ```
-assets/index-DtZv2v2T.js
+assets/index-ge43fJII.js
 assets/index-COza5ahJ.css
 ```
 
