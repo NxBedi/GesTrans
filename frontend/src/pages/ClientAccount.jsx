@@ -42,6 +42,7 @@ export default function ClientAccount() {
 
   const customerName = data?.customer?.name || `${t('common.customer')} #${customerId}`;
   const backTo = location.state?.back || '/customers';
+  const backState = location.state?.backState;
 
   const periodEntries = useMemo(
     () => (data?.entries || []).filter((e) => e.kind !== 'opening'),
@@ -199,7 +200,7 @@ export default function ClientAccount() {
           <button className="clients-pill pill-blue" onClick={() => setShowStatement(true)} disabled={!data || loading}>
             {t('clientAccount.fullStatement')}
           </button>
-          <button className="clients-pill pill-gray" onClick={() => navigate(backTo)}>{t('clientAccount.back')}</button>
+          <button className="clients-pill pill-gray" onClick={() => navigate(backTo, { state: backState })}>{t('clientAccount.back')}</button>
         </div>
       </div>
 

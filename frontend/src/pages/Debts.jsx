@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useState } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { reportsApi, customersApi } from '../utils/api.js';
 import { refreshDashboard } from '../utils/refresh.js';
 import { DEBT_BADGE } from '../utils/format.js';
 import { exportExcel } from '../utils/export.js';
 import { useFeedback } from '../components/Feedback.jsx';
 import { useI18n } from '../i18n/I18nContext.jsx';
-import AccountStatement from '../components/AccountStatement.jsx';
 
 function today() {
   return new Date().toISOString().slice(0, 10);
@@ -14,10 +14,12 @@ function today() {
 export default function Debts() {
   const { t, fmt, money, dmy, debtLabel } = useI18n();
   const { toast, confirm } = useFeedback();
+  const navigate = useNavigate();
+  const location = useLocation();
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [q, setQ] = useState('');
-  const [status, setStatus] = useState('');
+  const [q, setQ] = useState(() => location.state?.q || '');
+  const [status, setStatus] = useState(() => location.state?.status || '');
   const [showPay, setShowPay] = useState(null);
   const [payForm, setPayForm] = useState({ amount: '', payment_date: today(), notes: '' });
   const [payErr, setPayErr] = useState('');
@@ -29,7 +31,6 @@ export default function Debts() {
   const [newForm, setNewForm] = useState({ name: '', phone: '', address: '', notes: '' });
   const [newErr, setNewErr] = useState('');
   const [saving, setSaving] = useState(false);
-  const [stmtRow, setStmtRow] = useState(null);
   const [showOldDebt, setShowOldDebt] = useState(false);
   const [oldForm, setOldForm] = useState({ amount: '', debt_date: today(), notes: '' });
   const [oldErr, setOldErr] = useState('');
@@ -289,7 +290,7 @@ export default function Debts() {
                 <td><span className={`badge ${DEBT_BADGE[r.debt_status] || 'badge-due'}`}>{debtLabel(r.debt_status)}</span></td>
                 <td style={{ textAlign: 'center', whiteSpace: 'nowrap' }}>
                   <button className="btn btn-success btn-sm" onClick={() => openPay(r)}>💳 {t('debts.btnPayment')}</button>{' '}
-                  <button className="btn btn-primary btn-sm" onClick={() => setStmtRow(r)}>{t('debts.btnStatement')}</button>{' '}
+                  <button className="btn btn-primary btn-sm" onClick={() => navigate(`/clients/${r.id}/compte`, { state: { back: '/debts', backState: { q, status } } })}>{t('debts.btnStatement')}</button>{' '}
                   <button className="btn btn-outline btn-sm" onClick={() => viewHistory(r)}>{t('debts.btnHistory')}</button>{' '}
                   <button className="btn btn-outline btn-sm" onClick={() => { setDueForm(r); setDueDate(r.due_date ? String(r.due_date).slice(0, 10) : ''); }}>📅</button>
                 </td>
@@ -454,14 +455,6 @@ export default function Debts() {
             </div>
           </div>
         </div>
-      )}
-
-      {stmtRow && (
-        <AccountStatement
-          customerId={stmtRow.id}
-          customerName={stmtRow.customer_name}
-          onClose={() => setStmtRow(null)}
-        />
       )}
     </div>
   );
