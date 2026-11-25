@@ -175,9 +175,9 @@ export default function Financial() {
       {/* Summary cards */}
       <div className="grid grid-4" style={{ marginBottom: 8 }}>
         <div className="card stat-card">
-          <div className="stat-value" style={{ color: '#8b5cf6' }}>{fmt(overview?.capital_invested)}</div>
-          <div className="stat-label">{t('financial.capitalInvested')}</div>
-          <div className="muted" style={{ marginTop: 4, fontSize: 12 }}>{t('financial.capitalInvestedSub')}</div>
+          <div className="stat-value" style={{ color: '#8b5cf6' }}>{fmt(overview?.capital_total ?? overview?.capital_invested)}</div>
+          <div className="stat-label">{t('financial.capitalTotal')}</div>
+          <div className="muted" style={{ marginTop: 4, fontSize: 12 }}>{t('financial.capitalTotalSub', { amount: fmt(overview?.capital_invested) })}</div>
         </div>
         <div className="card stat-card">
           <div className="stat-value" style={{ color: Number(overview?.cash_box) >= 0 ? '#16a34a' : '#dc2626' }}>{fmt(overview?.cash_box)}</div>

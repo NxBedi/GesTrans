@@ -54,8 +54,8 @@ export default function AccountantCashbox() {
           <div className="stat-label">{t('accountant.cashBox')}</div>
         </div>
         <div className="card stat-card">
-          <div className="stat-value">{fmt(overview?.capital_invested)}</div>
-          <div className="stat-label">{t('accountant.capitalInvested')}</div>
+          <div className="stat-value">{fmt(overview?.capital_total ?? overview?.capital_invested)}</div>
+          <div className="stat-label">{t('financial.capitalTotal')}</div>
         </div>
         <div className="card stat-card">
           <div className="stat-value" style={{ color: '#16a34a' }}>{fmt(inflow)}</div>

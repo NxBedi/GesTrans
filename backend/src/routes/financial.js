@@ -13,8 +13,9 @@ router.use(authRequired);
  *                     إيداعات وسحوبات رأس المال + تسويات يدوية + التحصيلات من الزبائن
  *                     − تكاليف الحاويات المدفوعة − مصاريف المؤسسة − الرواتب المدفوعة.
  *   النتيجة التشغيلية المحققة نقداً = نقدية الصندوق − رأس المال المستثمر.
- * المصاريف والديون والأرباح تُتتبَّع كلٌّ منها مستقلة عن رأس المال.
- * الدين القديم لكل زبون يُحتسب داخل حسابه (customers.opening_balance) ويُسدد بالإيداع مثل بقية الحسابات.
+ * المصاريف والأرباح تُتتبَّع مستقلة عن رأس المال.
+ * الدين القديم يُضاف إلى رأس المال (كما يُضاف إلى حساب الزبون) دون أن يلمس نقدية الصندوق،
+ * وعند تحصيله يُسجَّل كدفعة فتدخل النقدية بينما يبقى ضمن رأس المال.
  */
 
 // GET /api/financial/register/current - open cash register session (with live expected closing)
@@ -121,7 +122,7 @@ router.get('/overview', requirePermission(PERM.FIN_CASHBOX_VIEW), async (req, re
     `),
     // رأس المال المستثمر = مساهمات المالك فقط (مستقل عن نشاط الصندوق)
     query('SELECT COALESCE(SUM(amount),0)::numeric AS total FROM capital_transactions'),
-    // الدين القديم المتبقي لدى الزبائن (رصيد سابق داخل كل حساب — لا يؤثر على الصندوق)
+    // الدين القديم لدى الزبائن: يُضاف إلى رأس المال ولا يلمس الصندوق حتى يُحصَّل
     query(`
       SELECT (COALESCE((SELECT SUM(opening_balance) FROM customers),0)
             + COALESCE((SELECT SUM(amount) FROM customer_old_debts),0))::numeric AS total
@@ -147,6 +148,8 @@ router.get('/overview', requirePermission(PERM.FIN_CASHBOX_VIEW), async (req, re
   const cashTotal = Number(cash.rows[0].total);
   const capitalInvested = Number(capital.rows[0].total);
   const oldDebtTotal = Number(oldDebts.rows[0].total);
+  // رأس المال الكلي = مساهمات المالك + الديون القديمة (لا تؤثر على النقدية قبل التحصيل)
+  const capitalWithDebts = capitalInvested + oldDebtTotal;
   const billedTotal = Number(billed.rows[0].total);
   const paidTotal = Number(paid.rows[0].total);
   const collectedTotal = Number(collected.rows[0].total);
@@ -160,14 +163,17 @@ router.get('/overview', requirePermission(PERM.FIN_CASHBOX_VIEW), async (req, re
   const operationalResult = cashTotal - capitalInvested;
 
   res.json({
-    // رأس المال المستثمر = مساهمات المالك فقط (مستقل عن نشاط الصندوق)
+    // رأس المال المستثمر = مساهمات المالك فقط
     capital_invested: capitalInvested,
+    // رأس المال الكلي = المساهمات + الديون القديمة المضافة إلى حسابات الزبائن
+    capital: capitalWithDebts,
+    capital_total: capitalWithDebts,
+    old_debt_capital: oldDebtTotal,
     // النقدية الفعلية في الصندوق (محصلة كل الحركات)
     cash_box: cashTotal,
     // النتيجة التشغيلية المحققة نقداً (أرباح/خسائر تشغيلية + فروقات توقيت التحصيل)
     operational_cash_result: operationalResult,
     // حقول متوافقة للخلف (مؤقتة)
-    capital: capitalInvested,
     cash_capital: cashTotal,
     old_debts: oldDebtTotal,
     customer_debt: customerDebt,

@@ -80,7 +80,8 @@ router.get('/:id/old-debts', allowRoles('manager'), async (req, res) => {
 });
 
 // POST /api/customers/:id/old-debts - record old debt (رصيد سابق) inside a customer account.
-// It raises the customer's balance/debt but is NOT a cash movement (no cash box / capital effect).
+// It raises the customer's balance and is included in total capital, but is NOT a cash
+// movement: the cash box changes only when the debt is later collected as a payment.
 router.post('/:id/old-debts', allowRoles('manager'), async (req, res) => {
   const id = Number(req.params.id);
   const { amount, debt_date, notes } = req.body || {};

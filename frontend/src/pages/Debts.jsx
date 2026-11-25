@@ -148,7 +148,7 @@ export default function Debts() {
     setShowOldDebt(true);
   };
 
-  // سجل دين قديم (رصيد سابق) داخل حساب الزبون بتاريخه الأصلي — لا يؤثر على الصندوق أو رأس المال
+  // سجل دين قديم (رصيد سابق) داخل حساب الزبون بتاريخه الأصلي — يُضاف إلى رأس المال دون لمس الصندوق حتى التحصيل
   const submitOldDebt = async (e) => {
     e.preventDefault();
     setOldErr('');
