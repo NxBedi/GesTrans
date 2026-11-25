@@ -39,7 +39,7 @@ export default function Dashboard() {
     const expUp = (d.expense_change_pct ?? 0) >= 0;
     const vsYesterday = (pct) => t('dashboard.vsYesterday', { pct: `${pct > 0 ? '+' : ''}${pct}%` });
     return [
-      { ico: '💰', bg: '#f0fdf4', lbl: t('dashboard.cash'), val: moneyFmt(d.cash_in_hand), sub: t('dashboard.cashSub'), color: '#16a34a', link: '/financial', linkTitle: t('dashboard.openCashbox') },
+      { ico: '💰', bg: '#f0fdf4', lbl: t('dashboard.cash'), val: moneyFmt(d.cash_in_hand), sub: t('dashboard.cashSub'), color: (d.cash_in_hand ?? 0) >= 0 ? '#2E7D32' : '#C0392B', featured: true, accent: (d.cash_in_hand ?? 0) >= 0 ? '#2E7D32' : '#C0392B', link: '/financial', linkTitle: t('dashboard.openCashbox') },
       { ico: '📥', bg: '#eff6ff', lbl: t('dashboard.todayIncome'), val: moneyFmt(d.today?.income), sub: vsYesterday(d.income_change_pct), delta: `${d.income_change_pct > 0 ? '+' : ''}${d.income_change_pct}%`, deltaCls: incomeUp ? 'up' : 'down', link: '/financial', linkTitle: t('dashboard.openCashbox') },
       { ico: '📤', bg: '#fef2f2', lbl: t('dashboard.todayExpense'), val: moneyFmt(d.today?.expense), sub: vsYesterday(d.expense_change_pct), delta: `${d.expense_change_pct > 0 ? '+' : ''}${d.expense_change_pct}%`, deltaCls: expUp ? 'down' : 'up', link: '/financial', linkTitle: t('dashboard.openCashbox') },
       { ico: '⚖️', bg: '#f5f3ff', lbl: t('dashboard.todayNet'), val: moneyFmt(d.today?.net), sub: t('dashboard.netSub'), color: d.today?.net >= 0 ? '#16a34a' : '#dc2626', link: '/financial', linkTitle: t('dashboard.openCashbox') },
@@ -52,14 +52,14 @@ export default function Dashboard() {
     const c = dash?.containers;
     const ex = dash?.expenses;
     return [
-      { ico: '📒', bg: '#fef2f2', lbl: t('dashboard.totalDebts'), val: moneyFmt(d.total), sub: t('dashboard.debtorsCount', { count: d.debtors }), link: '/debts', linkTitle: t('dashboard.openDebts') },
+      { ico: '📒', bg: '#fef2f2', lbl: t('dashboard.totalDebts'), val: moneyFmt(d.total), sub: t('dashboard.debtorsCount', { count: d.debtors }), color: '#C0392B', featured: true, accent: '#C0392B', link: '/debts', linkTitle: t('dashboard.openDebts') },
       { ico: '⏰', bg: '#fff7ed', lbl: t('dashboard.overdueDebts'), val: moneyFmt(d.overdue_amount), sub: t('dashboard.overdueCount', { count: d.overdue_count }), color: '#d97706', link: '/debts', linkTitle: t('dashboard.openDebts') },
       { ico: '📉', bg: '#fef2f2', lbl: t('dashboard.totalExpenses'), val: moneyFmt(dash?.total_expenses ?? ex?.total), sub: t('dashboard.expensesSub'), linkTitle: t('dashboard.expensesBreakdown', { institution: moneyFmt(ex?.institution), salaries: moneyFmt(ex?.salaries) }) },
       { ico: '📦', bg: '#eff6ff', lbl: t('dashboard.runningContainers'), val: c?.present || 0, sub: t('dashboard.runningSub'), link: '/containers', linkTitle: t('dashboard.openContainers') },
       { ico: '🔒', bg: '#f0fdf4', lbl: t('dashboard.readyForPricing'), val: c?.in_transit || 0, sub: t('dashboard.readySub'), link: '/pricing-queue', linkTitle: t('dashboard.openPricing') },
       { ico: '✅', bg: '#f5f3ff', lbl: t('dashboard.pricedContainers'), val: c?.received || 0, sub: t('dashboard.pricedSub'), link: '/finished', linkTitle: t('dashboard.openFinished') },
       { ico: '🏁', bg: '#e0f2fe', lbl: t('dashboard.settledContainers'), val: c?.liquidated ?? ((c?.closed || 0) + (c?.priced || 0)), sub: t('dashboard.settledSub'), link: '/containers', linkTitle: t('dashboard.openContainers') },
-      { ico: '🧾', bg: '#f0f9ff', lbl: t('dashboard.containerProfit'), val: moneyFmt(dash?.container_profit ?? dash?.container_profits ?? dash?.profit_total), sub: t('dashboard.billedSub', { amount: moneyFmt(dash?.billed_total) }), link: '/finished', linkTitle: t('dashboard.openFinished') },
+      { ico: '🧾', bg: '#f0f9ff', lbl: t('dashboard.containerProfit'), val: moneyFmt(dash?.container_profit ?? dash?.container_profits ?? dash?.profit_total), sub: t('dashboard.billedSub', { amount: moneyFmt(dash?.billed_total) }), color: '#006C84', featured: true, accent: '#009CB4', link: '/finished', linkTitle: t('dashboard.openFinished') },
     ];
   }, [dash, t]);
 
@@ -75,6 +75,12 @@ export default function Dashboard() {
     );
   }
 
+  // The three headline figures (cash in hand, total debts, container profit)
+  // get their own larger row at the top of the dashboard.
+  const featuredKpis = [...(kpis || []), ...(debtKpis || [])].filter((k) => k.featured);
+  const mainKpis = (kpis || []).filter((k) => !k.featured);
+  const mainDebtKpis = (debtKpis || []).filter((k) => !k.featured);
+
   return (
     <div className="page">
       <div className="toolbar">
@@ -89,15 +95,21 @@ export default function Dashboard() {
 
       {!dash && <div className="empty-state"><span className="spinner" /></div>}
 
-      {kpis && (
-        <div className="kpi-grid" style={{ marginBottom: 18 }}>
-          {kpis.map((k, i) => <KpiCard key={i} k={k} />)}
+      {featuredKpis.length > 0 && (
+        <div className="kpi-grid kpi-grid-featured" style={{ marginBottom: 18 }}>
+          {featuredKpis.map((k, i) => <KpiCard key={`f${i}`} k={k} featured />)}
         </div>
       )}
 
-      {debtKpis && (
+      {mainKpis.length > 0 && (
         <div className="kpi-grid" style={{ marginBottom: 18 }}>
-          {debtKpis.map((k, i) => <KpiCard key={`d${i}`} k={k} />)}
+          {mainKpis.map((k, i) => <KpiCard key={i} k={k} />)}
+        </div>
+      )}
+
+      {mainDebtKpis.length > 0 && (
+        <div className="kpi-grid" style={{ marginBottom: 18 }}>
+          {mainDebtKpis.map((k, i) => <KpiCard key={`d${i}`} k={k} />)}
         </div>
       )}
 
@@ -159,8 +171,10 @@ export default function Dashboard() {
   );
 }
 
-function KpiCard({ k }) {
+function KpiCard({ k, featured = false }) {
   const { t } = useI18n();
+  const cls = `kpi-card${featured ? ' kpi-card-featured' : ''}`;
+  const style = featured && k.accent ? { borderTopColor: k.accent } : undefined;
   const content = (
     <>
       <div className="kpi-icon" style={{ background: k.bg }}>{k.ico}</div>
@@ -175,11 +189,11 @@ function KpiCard({ k }) {
     </>
   );
   return k.link ? (
-    <Link to={k.link} className="kpi-card kpi-link" title={k.linkTitle || t('common.openList')}>
+    <Link to={k.link} className={`${cls} kpi-link`} style={style} title={k.linkTitle || t('common.openList')}>
       {content}
     </Link>
   ) : (
-    <div className="kpi-card" title={k.linkTitle || undefined}>{content}</div>
+    <div className={cls} style={style} title={k.linkTitle || undefined}>{content}</div>
   );
 }
 

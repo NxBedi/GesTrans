@@ -143,6 +143,15 @@ button { font-family: inherit; }
 .kpi-delta.up { background: var(--green-50); color: var(--green); }
 .kpi-delta.down { background: var(--red-50); color: var(--red); }
 
+/* Headline KPI cards: cash in hand, total debts, container profit */
+.kpi-grid-featured { grid-template-columns: repeat(3, 1fr); gap: 18px; }
+.kpi-grid-featured .kpi-card { padding: 24px 26px; gap: 16px; border-top-width: 4px; }
+.kpi-grid-featured .kpi-icon { width: 60px; height: 60px; border-radius: 16px; font-size: 28px; }
+.kpi-grid-featured .kpi-label { font-size: 14px; }
+.kpi-grid-featured .kpi-value { font-size: 30px; margin-top: 4px; }
+.kpi-grid-featured .kpi-sub { font-size: 12.5px; margin-top: 4px; }
+@media (max-width: 900px) { .kpi-grid-featured { grid-template-columns: 1fr; } }
+
 .dash-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
 .dash-card { display: flex; align-items: center; gap: 14px; padding: 18px; transition: .15s; }
 .dash-card:hover { box-shadow: var(--shadow-md); transform: translateY(-1px); }
