@@ -426,9 +426,15 @@ test('المحاسب لا يستطيع حذف حركة مالية (العكس ف
 test('سجل التدقيق يوثّق العمليات المالية', async () => {
   const r = await api('/accountant/audit?limit=200', { token: accountantToken });
   assert.equal(r.status, 200);
-  const creates = r.data.filter((a) => a.action === 'create' && a.entity_type === 'general_expense');
+  // قيّد الفحص بعمليات هذا الاختبار فقط؛ قد تحتوي قاعدة البيانات سجلات
+  // حقيقية سابقة كتبها مستخدمون آخرون (مثل المدير) لا علاقة لها بالاختبار.
+  const testIds = new Set(created.expenses.map(String));
+  const testAudits = r.data.filter(
+    (a) => a.entity_type === 'general_expense' && testIds.has(String(a.entity_id))
+  );
+  const creates = testAudits.filter((a) => a.action === 'create');
   assert.ok(creates.length > 0, 'توجد عمليات إنشاء مسجّلة');
-  assert.ok(r.data.some((a) => a.action === 'reverse'), 'توجد عمليات عكس مسجّلة');
+  assert.ok(testAudits.some((a) => a.action === 'reverse'), 'توجد عمليات عكس مسجّلة');
   assert.ok(creates.every((a) => a.actor_name === 'محاسب اختبار'), 'المسجّل هو صاحب العملية');
 });
 
