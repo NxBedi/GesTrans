@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
 # ---------------------------------------------------------------
-# نشر واجهة GesTrans على tewba.seheltech.com  (نسخة 13a5a74)
+# نشر واجهة GesTrans على tewba.seheltech.com  (نسخة 4b7a0ec)
 # الاستخدام:
-#   sudo bash deploy-tewba.sh /tmp/tewba-frontend-13a5a74.tar.gz
+#   sudo bash deploy-tewba.sh /tmp/tewba-frontend-4b7a0ec.tar.gz
 # ---------------------------------------------------------------
 set -euo pipefail
 
-ARCHIVE="${1:?استخدم: sudo bash deploy-tewba.sh /path/to/tewba-frontend-13a5a74.tar.gz}"
+ARCHIVE="${1:?استخدم: sudo bash deploy-tewba.sh /path/to/tewba-frontend-4b7a0ec.tar.gz}"
 SERVER_NAME="${SERVER_NAME:-tewba.seheltech.com}"
-EXPECTED_SHA256="${EXPECTED_SHA256:-6076e39271172b741584994124dbd18cd9983770fec6a3804fbe4eda0fb8bc8d}"
+EXPECTED_SHA256="${EXPECTED_SHA256:-a66e2d7b2ef9c844ea469e7b04b2105f016baf424e1884b79ac3435d812a654e}"
 
 if [[ $EUID -ne 0 ]]; then
   echo "!! شغّل السكربت بصلاحية root: sudo bash $0 $ARCHIVE" >&2
@@ -92,6 +92,6 @@ echo "==> النسخة المنشورة الآن:"
 curl -fsS "https://$SERVER_NAME/" | grep -oE 'assets/index-[A-Za-z0-9_-]+\.(js|css)' | sort -u
 
 echo
-echo "المتوقع: assets/index-BFEiIOnK.js و assets/index-COza5ahJ.css"
+echo "المتوقع: assets/index-DtZv2v2T.js و assets/index-COza5ahJ.css"
 echo "للرجوع عن النشر:"
 echo "  rm -rf '$WEB_ROOT' && mv '$BACKUP' '$WEB_ROOT' && systemctl reload nginx"

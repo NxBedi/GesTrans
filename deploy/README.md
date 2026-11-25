@@ -1,7 +1,8 @@
 # نشر الواجهة على tewba.seheltech.com
 
-هذا المجلد يحتوي حزمة النشر الخاصة بالكوميت `13a5a74`
-(صفحة كشف الحساب كصفحة كاملة + إبراز بطاقات نقدية الصندوق وإجمالي الديون وأرباح الحاويات).
+هذا المجلد يحتوي حزمة النشر الخاصة بالكوميت `4b7a0ec`
+(صفحة كشف الحساب كصفحة كاملة + إبراز بطاقات نقدية الصندوق وإجمالي الديون وأرباح الحاويات
++ عنوان التبويب «مؤسسة التوبة» / «ETS TEWBA»).
 
 > **ملاحظة:** التغييرات واجهة فقط (Frontend). الخادم الخلفي وقاعدة البيانات لم يتغيرا،
 > لذلك لا حاجة لإعادة تشغيل الـ backend.
@@ -10,21 +11,21 @@
 
 | الملف | الوصف |
 |---|---|
-| `tewba-frontend-13a5a74.tar.gz` | محتويات `frontend/dist` جاهزة للفك في جذر الموقع |
+| `tewba-frontend-4b7a0ec.tar.gz` | محتويات `frontend/dist` جاهزة للفك في جذر الموقع |
 | `deploy-tewba.sh` | سكربت نشر آمن: يتحقق من البصمة، يأخذ نسخة احتياطية، يفك الحزمة، يعمل `nginx -t` ثم يعيد التحميل |
 | `README.md` | هذا الملف |
 
 - بصمة الحزمة SHA256:
-  `6076e39271172b741584994124dbd18cd9983770fec6a3804fbe4eda0fb8bc8d`
+  `a66e2d7b2ef9c844ea469e7b04b2105f016baf424e1884b79ac3435d812a654e`
 - الأصول المتوقعة بعد النشر:
-  `assets/index-BFEiIOnK.js` و `assets/index-COza5ahJ.css`
+  `assets/index-DtZv2v2T.js` و `assets/index-COza5ahJ.css`
 
 ## 1) رفع الحزمة إلى السيرفر
 
 من PowerShell على جهازك:
 
 ```powershell
-scp "C:\Users\LMR\projects\GesTrans\deploy\tewba-frontend-13a5a74.tar.gz" root@62.84.188.109:/tmp/
+scp "C:\Users\LMR\projects\GesTrans\deploy\tewba-frontend-4b7a0ec.tar.gz" root@62.84.188.109:/tmp/
 scp "C:\Users\LMR\projects\GesTrans\deploy\deploy-tewba.sh" root@62.84.188.109:/tmp/
 ```
 
@@ -33,14 +34,14 @@ scp "C:\Users\LMR\projects\GesTrans\deploy\deploy-tewba.sh" root@62.84.188.109:/
 ## 2) التنفيذ على السيرفر
 
 ```bash
-sudo bash /tmp/deploy-tewba.sh /tmp/tewba-frontend-13a5a74.tar.gz
+sudo bash /tmp/deploy-tewba.sh /tmp/tewba-frontend-4b7a0ec.tar.gz
 ```
 
 إذا لم يتمكن السكربت من اكتشاف مجلد الموقع تلقائياً:
 
 ```bash
 nginx -T | grep -nE 'server_name|root '
-sudo WEB_ROOT=/var/www/tewba bash /tmp/deploy-tewba.sh /tmp/tewba-frontend-13a5a74.tar.gz
+sudo WEB_ROOT=/var/www/tewba bash /tmp/deploy-tewba.sh /tmp/tewba-frontend-4b7a0ec.tar.gz
 ```
 
 ## 3) التحقق
@@ -52,11 +53,12 @@ curl -fsS https://tewba.seheltech.com/ | grep -oE 'assets/index-[A-Za-z0-9_-]+\.
 يجب أن يظهر:
 
 ```
-assets/index-BFEiIOnK.js
+assets/index-DtZv2v2T.js
 assets/index-COza5ahJ.css
 ```
 
 ثم افتح الموقع وسجّل الدخول كمدير:
+- عنوان التبويب: «مؤسسة التوبة» في العربية و «ETS TEWBA» في الفرنسية.
 - `لوحة التحكم`: البطاقات الثلاث الكبيرة (نقدية الصندوق، إجمالي الديون، أرباح الحاويات) في الصف الأول.
 - `العملاء والديون` → زر `كشف حساب` يفتح صفحة `Compte client` بدل نافذة منبثقة.
 
